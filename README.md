@@ -368,22 +368,133 @@ The Spring Boot app serves the UI and API. The delivery server must also be runn
 
 ## Tests
 
-Run unit tests:
+### Running Tests
+
+Run all tests:
+
+```bash
+mvn test
+```
+
+Run quietly (without verbose output):
 
 ```bash
 mvn -q test
 ```
 
-Create a package:
+Run a specific test class:
+
+```bash
+mvn test -Dtest=ProtocolFlowIntegrationTest
+```
+
+Run a specific test method:
+
+```bash
+mvn test -Dtest=ProtocolFlowIntegrationTest#uploadContract_acceptsEncryptedPayloadAndPersistsContract
+```
+
+Create a package without running tests:
 
 ```bash
 mvn -q -DskipTests package
 ```
 
+### Test Classes
+
+#### Unit Tests
+
+- **`AuditLogStoreTest.java`**
+  - Tests audit log creation, persistence, and descending order retrieval
+  - Validates per-contract and global audit filtering
+
+- **`CryptoUtilsTest.java`**
+  - Tests cryptographic primitives: key generation, signing, verification, encryption, decryption
+  - Tests key wrapping and unwrapping for recipient key material
+
+- **`OtUtilsTest.java`**
+  - Tests OT-style transfer derivation behavior
+  - Tests offer and commitment generation
+
+#### Integration Tests
+
+- **`ProtocolFlowIntegrationTest.java`**
+  - Tests the complete sender → receipt → OT selection → key release → decrypt flow
+  - 8 comprehensive test cases covering happy path and error conditions:
+    - Contract upload and persistence
+    - Sent/inbox listing
+    - Recipient access before receipt (should fail)
+    - Valid receipt acceptance
+    - Bogus artifact validation
+    - OT transfer derivation
+    - Key release after receipt
+    - Audit log recording
+
+- **`ContractSecurityIntegrationTest.java`**
+  - Tests security validations and edge cases
+  - 4 security-focused test cases:
+    - Invalid audit data validation
+    - Gap analysis for contract states
+    - OT commitment validation
+    - Contract identity verification
+
+- **`ProtocolPerformanceTest.java`**
+  - Tests encryption/decryption performance on various file sizes
+  - 4 performance test cases:
+    - AES-GCM encryption timing (small, medium, large files)
+    - Sequential upload performance
+    - Key wrapping/unwrapping timing
+    - Decryption throughput
+
+### Test Isolation
+
+The test harness (`TestEnvironmentSupport.java`) provides complete isolation:
+
+1. **File Backup/Restore**
+   - Backs up `web-data/` files before test suite runs
+   - Resets files to clean initial state for testing
+   - Restores original files after suite completes
+   - Prevents test data from corrupting real application state
+
+2. **In-Memory State Reset**
+   - Clears `ServerMain.USER_PUBKEYS` between tests
+   - Clears `ServerMain.CONTRACTS` between tests
+   - Clears `ServerMain.AUDIT` entries between tests
+   - Clears `ContractController.SEEN` replay cache
+   - Resets `ContractController.REPLAY_COUNTER` to 0
+
+3. **Server Lifecycle Management**
+   - Starts a dedicated test instance of `ServerMain` on port 5050
+   - Waits for server to be ready before running tests
+   - Cleans up server state after each test
+   - All state is automatically restored after test suite completes
+
+### Safe Testing Guidelines
+
+✅ **Safe to run at any time:**
+- `mvn test` – completely isolated from the main application
+- Tests never modify real application data
+- All backing up and restoring happens automatically
+
+⚠️ **Important considerations:**
+- Tests start `ServerMain` on port 5050 during execution
+- If the main application is already running on port 5050, tests will fail
+- **Recommended:** Run tests when the main application is not running
+- Test startup adds ~2-3 seconds overhead due to server initialization
+
+### Test Coverage
+
 Current tests cover:
 
-- OT-style transfer derivation behavior
-- audit-log persistence and descending ordering
+- Cryptographic operations (signing, verification, encryption, decryption)
+- Key wrapping and unwrapping for destination recipients
+- OT-style transfer derivation and commitment validation
+- Audit log persistence, filtering, and descending ordering
+- Complete protocol flow from upload through key release
+- Receipt validation and signature verification
+- Bogus artifact handling and validation
+- Replay attack prevention
+- Performance metrics for encryption, decryption, and key operations
 
 ## Important Security Notes
 
