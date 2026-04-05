@@ -142,9 +142,22 @@ final class TestEnvironmentSupport {
     private static void resetRuntimeState() throws Exception {
         clearMapField(ServerMain.class, "USER_PUBKEYS");
         clearMapField(ServerMain.class, "CONTRACTS");
-        clearStaticListField(ServerMain.class, "AUDIT");
+        clearAuditLogStore();
         clearMapField(ContractController.class, "SEEN");
         AtomicLongHolder.reset(ContractController.class, "REPLAY_COUNTER");
+    }
+
+    private static void clearAuditLogStore() throws Exception {
+        Field auditField = ServerMain.class.getDeclaredField("AUDIT");
+        auditField.setAccessible(true);
+        AuditLogStore audit = (AuditLogStore) auditField.get(null);
+        
+        // Clear the internal entries list
+        Field entriesField = AuditLogStore.class.getDeclaredField("entries");
+        entriesField.setAccessible(true);
+        @SuppressWarnings("unchecked")
+        List<Object> entries = (List<Object>) entriesField.get(audit);
+        entries.clear();
     }
 
     private static void clearMapField(Class<?> owner, String fieldName) throws Exception {
