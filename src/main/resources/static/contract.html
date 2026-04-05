@@ -1,0 +1,383 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><title>Contract</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/dashboard-client.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Secure Client Portal</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/dashboard-client.html" class="btn btn-dark">Inbox</a>
+      <a href="/audit.html?global=1" class="btn btn-dark">Audit</a>
+      <button class="btn btn-primary" type="button" onclick="clearSession(); location.href='/login.html'">Logout</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <div class="panel">
+      <h2>Contract</h2>
+      <p id="meta"></p>
+
+      <button id="ack" class="btn btn-primary">Acknowledge Receipt &amp; Open</button>
+      <div id="fileActions" class="file-actions hidden"></div>
+      <p id="out"></p>
+      <div id="preview" class="preview hidden"></div>
+    </div>
+  </div>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/docx-preview@1.1.1/dist/docx-preview.min.js"></script>
+<script src="https://unpkg.com/mammoth@1.4.16/mammoth.browser.min.js"></script>
+<script src="app.js?v=4"></script>
+<script>
+const OT_CHOICE_REAL = "REAL";
+
+function qs(k){ return new URLSearchParams(location.search).get(k); }
+function escapeHtml(value) {
+  return String(value)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+const ack = document.getElementById("ack");
+const out = document.getElementById("out");
+const meta = document.getElementById("meta");
+const fileActions = document.getElementById("fileActions");
+const preview = document.getElementById("preview");
+
+ack.disabled = true; // enable once page is ready
+
+function showStatus(message) {
+  out.textContent = message;
+}
+
+function renderPreviewText(bytes) {
+  preview.innerHTML = `<pre>${escapeHtml(decodeText(bytes))}</pre>`;
+  preview.classList.remove("hidden");
+}
+
+function renderPreviewPdf(bytes) {
+  const blob = new Blob([bytes], { type: "application/pdf" });
+  const url = URL.createObjectURL(blob);
+  preview.innerHTML = "";
+  const iframe = document.createElement("iframe");
+  iframe.src = url;
+  iframe.className = "preview-embed";
+  iframe.style.width = "100%";
+  iframe.style.height = "700px";
+  iframe.style.border = "1px solid #ddd";
+  iframe.title = "PDF preview";
+  preview.appendChild(iframe);
+  preview.classList.remove("hidden");
+}
+
+async function renderPreviewDocx(bytes) {
+  preview.innerHTML = "<div class=\"preview-message\">Loading DOCX preview...</div>";
+  preview.classList.remove("hidden");
+
+  if (window.docx && typeof window.docx.renderAsync === "function") {
+    try {
+      const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+      const blob = new Blob([arrayBuffer], { type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" });
+      preview.innerHTML = "";
+      const container = document.createElement("div");
+      container.className = "preview-embed docx-preview docx-document";
+      preview.appendChild(container);
+      await window.docx.renderAsync(blob, container, { ignoreWidth: true });
+      preview.classList.remove("hidden");
+      return;
+    } catch (e) {
+      console.error("docx-preview failed", e);
+    }
+  }
+
+  if (!window.mammoth || typeof mammoth.convertToHtml !== "function") {
+    preview.innerHTML = "<div class=\"preview-message\">DOCX preview is not available. Use Download or Open to view it in a compatible application.</div>";
+    return;
+  }
+
+  try {
+    const arrayBuffer = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const result = await mammoth.convertToHtml({ arrayBuffer });
+
+    preview.innerHTML = "";
+    const inner = document.createElement("div");
+    inner.className = "preview-embed docx-preview";
+    const page = document.createElement("div");
+    page.className = "docx-page";
+    page.innerHTML = result.value;
+    inner.appendChild(page);
+    preview.appendChild(inner);
+    preview.classList.remove("hidden");
+  } catch (e) {
+    console.error(e);
+    preview.innerHTML = "<div class=\"preview-message\">Unable to render DOCX preview. Use Download or Open instead.</div>";
+    preview.classList.remove("hidden");
+  }
+}
+
+function renderPreviewBinary() {
+  preview.textContent = "Binary contract content cannot be previewed in the browser.";
+  preview.classList.remove("hidden");
+}
+
+async function openContract(data, s, privKey, privEcdh, contractId) {
+  try {
+    ack.disabled = true;
+    preview.classList.add("hidden");
+    fileActions.classList.add("hidden");
+    showStatus("Submitting receipt...");
+
+    const ts = new Date().toISOString();
+    const receiptPayload = `RECEIPT|${contractId}|${data.contractHashB64}|${ts}`;
+    const receiptSig = await signText(privKey, receiptPayload);
+    const rr = await fetch(`/api/contracts/${contractId}/receipt`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({ username: s.username, timestampIso: ts, receiptSignatureB64: receiptSig })
+    });
+    const rd = await rr.json();
+    if (!rd.ok) {
+      if (rd.error === "Receipt already recorded") {
+        showStatus("Receipt already recorded. Continuing to open contract...");
+      } else {
+        showStatus(rd.error);
+        ack.disabled = false;
+        return;
+      }
+    } else {
+      showStatus("Receipt accepted. Completing OT selection...");
+    }
+
+    const tsOtOffer = new Date().toISOString();
+    const otOfferPayload = `REQ|OT_OFFER|${s.username}|-|${contractId}|${tsOtOffer}`;
+    const otOfferSig = await signText(privKey, otOfferPayload);
+    const or = await fetch(`/api/contracts/${contractId}/ot-offer?username=${encodeURIComponent(s.username)}&timestampIso=${encodeURIComponent(tsOtOffer)}&signatureB64=${encodeURIComponent(otOfferSig)}`);
+    const od = await or.json();
+    if (!od.ok && od.error !== "OT not enabled for this contract") { showStatus(od.error); ack.disabled = false; return; }
+
+    if (od.ok && !od.otSelection) {
+      const otTs = new Date().toISOString();
+      const otSelectPayload = `OT_SELECT|${contractId}|${od.otTransferId}|${OT_CHOICE_REAL}|${otTs}`;
+      const otSelectSig = await signText(privKey, otSelectPayload);
+      const sr = await fetch(`/api/contracts/${contractId}/ot-select`, {
+        method: "POST",
+        headers: {"Content-Type":"application/json"},
+        body: JSON.stringify({
+          username: s.username,
+          otProtocolTag: od.otProtocolTag,
+          otTransferId: od.otTransferId,
+          otSelection: OT_CHOICE_REAL,
+          timestampIso: otTs,
+          otSelectionSignatureB64: otSelectSig
+        })
+      });
+      const sd = await sr.json();
+      if (!sd.ok) {
+        if (sd.error === "OT selection already recorded") {
+          showStatus("OT selection already recorded. Continuing to open contract...");
+        } else {
+          showStatus(sd.error);
+          ack.disabled = false;
+          return;
+        }
+      }
+    }
+
+    showStatus("Receipt accepted. Getting released key...");
+    const ts2 = new Date().toISOString();
+    const payload2 = `REQ|KEY|${s.username}|-|${contractId}|${ts2}`;
+    const sig2 = await signText(privKey, payload2);
+    const kr = await fetch(`/api/contracts/${contractId}/released-key?username=${encodeURIComponent(s.username)}&timestampIso=${encodeURIComponent(ts2)}&signatureB64=${encodeURIComponent(sig2)}`);
+    const kd = await kr.json();
+    if (!kd.ok) { showStatus(kd.error); ack.disabled = false; return; }
+
+    const ephPub = await crypto.subtle.importKey("spki", b64d(kd.ephPubB64), { name:"ECDH", namedCurve:"P-256" }, false, []);
+    const shared = await crypto.subtle.deriveBits({ name:"ECDH", public:ephPub }, privEcdh, 256);
+    const kdf = await sha256(shared);
+    const wrapKeyBytes = new Uint8Array(kdf);
+    const fileKeyBuf = await aesGcmDecrypt(wrapKeyBytes, kd.wrapIvB64, kd.wrapCtB64);
+    const pt = await aesGcmDecrypt(new Uint8Array(fileKeyBuf), data.contractIvB64, data.contractCtB64);
+
+    const h = b64(await sha256(pt));
+    if (h !== data.contractHashB64) {
+      showStatus("Integrity FAILED (hash mismatch).");
+      ack.disabled = false;
+      return;
+    }
+
+    showStatus("Integrity OK.\nSubmitting decryption proof...");
+    const witnessHashB64 = h;
+    const proofTs = new Date().toISOString();
+    const proofPayload = `DECRYPT_PROOF|${contractId}|${witnessHashB64}|${proofTs}`;
+    const proofSig = await signText(privKey, proofPayload);
+
+    const pr = await fetch(`/api/contracts/${contractId}/decrypt-proof`, {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        username: s.username,
+        witnessHashB64: witnessHashB64,
+        timestampIso: proofTs,
+        decryptProofSignatureB64: proofSig
+      })
+    });
+    const pd = await pr.json();
+    if (!pd.ok) {
+      if (pd.error === "Decrypt proof already recorded") {
+        showStatus("Integrity OK. Decryption proof already recorded. Showing contract details.");
+      } else {
+        showStatus("Decryption succeeded locally, but proof submission failed: " + (pd.error || "unknown error"));
+        ack.disabled = false;
+        return;
+      }
+    } else {
+      showStatus("Integrity OK. \nDecrypted. Decryption proof submitted.");
+    }
+
+    const bytes = new Uint8Array(pt);
+    const name = (data.filename || "").toLowerCase();
+    const isPdf = name.endsWith(".pdf") ||
+      (bytes.length > 4 && bytes[0] === 0x25 && bytes[1] === 0x50 && bytes[2] === 0x44 && bytes[3] === 0x46);
+    const isDocx = name.endsWith(".docx");
+    const isBinary = (function() {
+      let nonText = 0;
+      const sample = Math.min(bytes.length, 512);
+      for (let i = 0; i < sample; i++) {
+        const b = bytes[i];
+        if (b === 0) return true;
+        if (b < 9 || (b > 13 && b < 32) || b === 127) nonText++;
+      }
+      return (nonText / Math.max(1, sample)) > 0.2;
+    })();
+
+    fileActions.innerHTML = "";
+    fileActions.classList.remove("hidden");
+    fileActions.style.display = "flex";
+
+    const blobType = isPdf
+      ? "application/pdf"
+      : isDocx
+      ? "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+      : isBinary
+      ? "application/octet-stream"
+      : "text/plain";
+    const blob = new Blob([bytes], { type: blobType });
+    const url = URL.createObjectURL(blob);
+
+    if (isPdf || isDocx) {
+      const openBtn = document.createElement("a");
+      openBtn.href = url;
+      openBtn.target = "_blank";
+      openBtn.rel = "noopener";
+      openBtn.className = "btn btn-outline";
+      openBtn.textContent = isPdf ? "Open PDF" : "Open DOCX";
+      fileActions.appendChild(openBtn);
+    }
+
+    const downloadBtn = document.createElement("a");
+    downloadBtn.href = url;
+    downloadBtn.download = data.filename || (isPdf ? "contract.pdf" : isDocx ? "contract.docx" : isBinary ? "contract.bin" : "contract.txt");
+    downloadBtn.className = "btn btn-primary";
+    downloadBtn.textContent = "Download";
+    fileActions.appendChild(downloadBtn);
+
+    if (isPdf) {
+      renderPreviewPdf(bytes);
+    } else if (isDocx) {
+      await renderPreviewDocx(bytes);
+    } else if (isBinary) {
+      renderPreviewBinary();
+    } else {
+      renderPreviewText(bytes);
+    }
+
+    ack.style.display = "none";
+  } catch (e) {
+    showStatus(e?.message || String(e));
+    console.error(e);
+    ack.disabled = false;
+  }
+}
+
+(async () => {
+  try {
+    const s = getSession();
+    if (!s) return location.href="/login.html";
+
+    if (s.role !== "CLIENT") {
+      out.textContent = "Only clients can open contracts.";
+      return;
+    }
+
+    const contractId = qs("id");
+    setLastContractId(contractId);
+    updateAuditNavLink();
+    const k = await getPrivateKeyWithUnlock(s.username, "Enter your unlock key to open:");
+    if (!k) { out.textContent = "No unlock key entered."; return; }
+    const privKey = k.privKey;
+    const privEcdh = await importPrivAsECDH(k.privPkcs8B64);
+
+    const ts1 = new Date().toISOString();
+    const payload1 = `REQ|GET|${s.username}|-|${contractId}|${ts1}`;
+    const sig1 = await signText(privKey, payload1);
+    const r = await fetch(`/api/contracts/${contractId}?username=${encodeURIComponent(s.username)}&timestampIso=${encodeURIComponent(ts1)}&signatureB64=${encodeURIComponent(sig1)}`);
+    const data = await r.json();
+    if (!data.ok) { out.textContent = data.error; return; }
+
+    meta.textContent = `From: ${data.from} | File: ${data.filename} | Contract ID: ${data.contractId}`;
+
+    if (data.decryptProofReceived) {
+      ack.style.display = "none";
+      showStatus("Contract already opened. Loading preview...");
+      openContract(data, s, privKey, privEcdh, contractId).catch((e) => {
+        showStatus(e?.message || String(e));
+        ack.style.display = "inline-flex";
+        ack.disabled = false;
+      });
+    } else {
+      ack.disabled = false;
+      ack.addEventListener("click", () => openContract(data, s, privKey, privEcdh, contractId));
+    }
+  } catch (e) {
+    out.textContent = e?.message || String(e);
+    console.error(e);
+  }
+})();
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+
+

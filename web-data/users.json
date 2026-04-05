@@ -1,0 +1,71 @@
+[ {
+  "username" : "Zainab",
+  "role" : "LAWYER",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEHkP/j6NAW3777vKbhwL1b3X/L1L+imcWEJUJcxNQ/Caec1x2kvUSkyLqweINlmw09WoZsEtq7HzaPFKrreXEGg==",
+  "saltB64" : "kJTvKaoTu8rkUNdLUQ5IVw==",
+  "ivB64" : "Z1VLHlElRL77KNzC",
+  "encPrivB64" : "CTk3C89CgXAtLE1xAbw4toZEKpWM2toN+MvJ7tYnXin/IQlO4SpC0YKqAKIzJ41MQnP4pNOPw5afXk33ALaRb2kbK7SF1SQdzBjxf3lJV1GiPfOhW4LNJX1+wcqT11zX+r7L/Im5lXaif22rmBAPlD0ssx4I43aVVNx2O4rQcacmY7oGe4ULW1qJ/0OulLllljLZYDWVnsx/tg=="
+}, {
+  "username" : "bob",
+  "role" : "CLIENT",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEq8nwPVuofyyPVpoqqr4X/cJBNYOHOZx9ndbVu3Kl5QneuIcoUydhmVu9dzLqS07Mda7LyZcHneYuiWwPsdY27A==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+}, {
+  "username" : "Nuha",
+  "role" : "CLIENT",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAElaMC1eoMXYRr+QZEr8979wdrNTjg7zkpkeVgnGGLsGaDxrMDNKILsZJKoXxRs+RHeaxBmrTYKLx5H2cZsiNWkg==",
+  "saltB64" : "dFaiJZ1JHBI2SJ9fIuFJpg==",
+  "ivB64" : "R0SSD0UPhHpPjakF",
+  "encPrivB64" : "PCn8J1QnhRsoNRC5kEY42OdvMGy4JwpUN9l/0XJXhSBICDmn5Mlu4KpM/49O76ay/Eo/xVQYYXMpNH5t3rRgDgOJCjeouCtFdTcEi8DQtF6njcrznI/zw8iv42jOzQ6nGun7SzZ19fc4DDD8OdWXxstrtrNI0TNADqVm0s7wYp89/3qVY5abmpBno7Zn0gsyUbz2Z95JJVjQ1A=="
+}, {
+  "username" : "Rushda",
+  "role" : "LAWYER",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEANETq6ZunDftC/RtxbRZ7O2dCQL+WfBNI9emN20hCRzsJhEvmTKyCnRh66ruIVuHs5LuHRPUpeYRQPoITeBX5A==",
+  "saltB64" : "N3DAHuGB5B7p8Lf7FtCOKw==",
+  "ivB64" : "djolyYx7Szr1433A",
+  "encPrivB64" : "Sqmaibh6H0aJcxJTFS6HXtb9ubu+mvll53oferw1z69kzmzy0Q4lUqgpFTXoCxCg4GUjiWy0WbEscA1zjf6TpMfZuHCpLc590ljbaZjKaI0jtrVRXiw9JqpEyjdW2wX8p8HG7alkj1Ri0QCiE2SE/4ROI2veubqqRQ//VywGy6J9aoV/2dvtT/wWIdQF2dUdr2RGI5vOq7BmnA=="
+}, {
+  "username" : "alice",
+  "role" : "LAWYER",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEE2VY4dtrFejmzetaafBNh6MOA3A4L/62QIysG+KIk5qLAmfeO98XIJljMaeL1JBXY0t5WSNBUajqcyPTWeKEbA==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+}, {
+  "username" : "zainab",
+  "role" : "CLIENT",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEljM/b17xiytG8fFrLTKRUzx9wC5+D2/PvQVA4sNJD0XYpsZItSseFwvsQ77yDaDA0wmiMD1xmuBFnbOK8ywMFA==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+}, {
+  "username" : "Nour",
+  "role" : "CLIENT",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEG1UYyqmEgr86DaxG8pvE+whQaglKO2LeI4fSCRJX2IaTObg/oZQSrD3Jov6H0uYxQTgYtTxPFnu/8uCycDS1Ig==",
+  "saltB64" : "K0gng9NGtisFGtCrnfKMQw==",
+  "ivB64" : "Zt20CtrYxr0HwAvQ",
+  "encPrivB64" : "wBWw3I6iQZk+lb/XFuQjOoxbto3TkSYpygfOem7wXNx/C31ebgi2WOS0UOTwLtUbH3Bos2UJ8qPeDkA6+orp/h3XJKHmjayC41SY/CGkCf78tUKy9NVa+K1Vys1Ltwl9M5h4oPd3YimlX2MY541sS4nydGHCabpISpZMUBfNoVubfOJbyy6qxwljNfpVeYCUMzPi6H7LQQjA5A=="
+}, {
+  "username" : "yara1",
+  "role" : "LAWYER",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEFE+wAywth+qhJzZcT5SG7jg4v4XRK5ASPh5uDIZaoQbpB6KGctYGZuBqlXZvD16GvPyIP2VKky8KxHeAfexAsw==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+}, {
+  "username" : "zainab1",
+  "role" : "CLIENT",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEiMGvDMiZKR8aDI9SeTjgjWy6Sqcww6EcrHuf//7DdVvbvi9wKd7j/Sy/iFwvod+1iwd4UZ+q65bpn0Qsn1jt8w==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+}, {
+  "username" : "yara",
+  "role" : "LAWYER",
+  "publicKeyB64" : "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAE6bCEDNj5S35vtoMkuy1De79RZnbmgTvVP80K8GG5cfFM26L7b+QXGUVy4w+CmTEbF/tWAFeB1RGUaadBaqQ+Xg==",
+  "saltB64" : null,
+  "ivB64" : null,
+  "encPrivB64" : null
+} ]

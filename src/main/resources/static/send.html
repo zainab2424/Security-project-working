@@ -1,0 +1,149 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><title>Send Contract</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/dashboard-lawyer.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Lawyer Console</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/dashboard-lawyer.html" class="btn btn-dark">Dashboard</a>
+      <a href="/audit.html?global=1" class="btn btn-dark">Audit</a>
+      <button class="btn btn-primary" type="button" onclick="clearSession(); location.href='/login.html'">Logout</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <div class="panel">
+      <h2>Send Contract</h2>
+
+      <div class="field">
+        <label for="to">Recipient username</label>
+        <input id="to" placeholder="client username">
+      </div>
+
+      <div class="field">
+        <label for="file">Select contract file</label>
+        <input id="file" type="file">
+      </div>
+
+      <button id="btn" class="btn btn-primary">Encrypt &amp; Send</button>
+      <p id="out"></p>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+const BOGUS_ARTIFACT_TAG = "BOGUS_CERTIFIED_ARTIFACT_V1";
+
+btn.onclick = async () => {
+  try {
+  const s = getSession(); if (!s) return location.href="/login.html";
+  if (s.role !== "LAWYER") return location.href="/dashboard-client.html";
+
+    const keys = await getPrivateKeyWithUnlock(s.username, "Enter your unlock key to send:");
+    if (!keys) { out.textContent = "No unlock key entered."; return; }
+    const { privKey } = keys;
+
+    const recipient = to.value.trim();
+    const f = file.files[0];
+    if (!recipient || !f) { out.textContent = "Missing recipient or file"; return; }
+
+    // Fetch recipient public key
+    const pr = await fetch(`/api/users/${encodeURIComponent(recipient)}/public-key`);
+    const pdata = await pr.json();
+    if (!pdata.ok) { out.textContent = pdata.error; return; }
+    const recipPub = pdata.publicKeyB64;
+
+    // Read file
+    const buf = await f.arrayBuffer();
+    const hashB64 = b64(await sha256(buf));
+
+    // Generate AES file key + encrypt
+    const fileKeyBytes = randBytes(32); // 256-bit
+    const encFile = await aesGcmEncrypt(fileKeyBytes, buf);
+
+    // Wrap file key for recipient
+    const wrapped = await wrapFileKeyForRecipient(recipPub, fileKeyBytes);
+
+    // Create a distinct bogus artifact that travels with the exchange but is never
+    // used by the existing receipt -> real-key -> real-message path.
+    const bogusBytes = new TextEncoder().encode(
+      `${BOGUS_ARTIFACT_TAG}\nThis is a bogus protected message.\nOriginal file: ${f.name}\nNonce: ${crypto.randomUUID()}`
+    );
+    const bogusHashB64 = b64(await sha256(bogusBytes));
+    const bogusFileKeyBytes = randBytes(32);
+    const bogusEncFile = await aesGcmEncrypt(bogusFileKeyBytes, bogusBytes);
+    const bogusWrapped = await wrapFileKeyForRecipient(recipPub, bogusFileKeyBytes);
+
+    // Signed SEND request
+    const ts = new Date().toISOString();
+    const payload = `REQ|SEND|${s.username}|${recipient}|-|${ts}`;
+    const sigB64 = await signText(privKey, payload);
+
+    const r = await fetch("/api/contracts/send", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        from: s.username,
+        to: recipient,
+        filename: f.name,
+        contractIvB64: encFile.ivB64,
+        contractCtB64: encFile.ctB64,
+        contractHashB64: hashB64,
+        bogusArtifactTag: BOGUS_ARTIFACT_TAG,
+        bogusContractIvB64: bogusEncFile.ivB64,
+        bogusContractCtB64: bogusEncFile.ctB64,
+        bogusContractHashB64: bogusHashB64,
+        ephPubB64: wrapped.ephPubB64,
+        wrapIvB64: wrapped.wrapIvB64,
+        wrapCtB64: wrapped.wrapCtB64,
+        bogusEphPubB64: bogusWrapped.ephPubB64,
+        bogusWrapIvB64: bogusWrapped.wrapIvB64,
+        bogusWrapCtB64: bogusWrapped.wrapCtB64,
+        timestampIso: ts,
+        signatureB64: sigB64
+      })
+    });
+    const d = await r.json();
+    if (!d.ok) { out.textContent = d.error; return; }
+    out.textContent = "Sent. Contract ID: " + d.contractId;
+  } catch (e) {
+    out.textContent = e?.message || String(e);
+    console.error(e);
+  }
+};
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+

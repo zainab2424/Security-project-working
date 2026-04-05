@@ -1,0 +1,100 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><title>Login</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/login.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Secure Contract Delivery</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/login.html">Login</a>
+      <a href="/register.html" class="btn btn-primary">Register</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page page-center">
+  <div class="container">
+    <div class="panel">
+      <h2>Login</h2>
+
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" placeholder="username">
+      </div>
+
+      <div class="field">
+        <label for="unlock">Unlock Key</label>
+        <input id="unlock" placeholder="unlock key" type="password">
+      </div>
+
+      <button id="btn" class="btn btn-primary">Login</button>
+
+      <p id="out"></p>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+btn.onclick = async () => {
+  out.textContent = "";
+
+  const username = document.getElementById("username").value.trim();
+  const unlockKey = document.getElementById("unlock").value;
+
+  // fetch server key bundle if this browser doesn't have it
+  try {
+    await ensureLocalKeyBundle(username);
+    await loadPrivateKey(username, unlockKey);
+  } catch (e) {
+    out.textContent = "Unlock key incorrect or no keys found. Register first.";
+    return;
+  }
+
+  // backend confirms role
+  const r = await fetch("/api/login", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({ username })
+  });
+  const data = await r.json();
+  if (!data.ok) { out.textContent = data.error; return; }
+
+  setSession(username, data.role);
+
+  if (data.role === "LAWYER") location.href = "/dashboard-lawyer.html";
+  else location.href = "/dashboard-client.html";
+};
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+
+

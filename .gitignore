@@ -1,0 +1,33 @@
+# Maven
+target/
+pom.xml.tag
+pom.xml.releaseBackup
+pom.xml.versionsBackup
+pom.xml.next
+release.properties
+dependency-reduced-pom.xml
+
+# IDE
+.vscode/
+.idea/
+*.iml
+*.iws
+*.ipr
+.DS_Store
+
+# Node (if using npm)
+node_modules/
+npm-debug.log*
+
+# Build outputs
+*.class
+*.jar
+*.war
+*.ear
+*.zip
+
+# Temporary files
+*.tmp
+*.bak
+*.swp
+*~

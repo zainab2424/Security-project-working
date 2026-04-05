@@ -1,0 +1,229 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><title>Lawyer Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/dashboard-lawyer.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Lawyer Console</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/dashboard-lawyer.html" class="btn btn-dark">Dashboard</a>
+      <a href="/audit.html?global=1" class="btn btn-dark">Audit</a>
+      <button class="btn btn-primary" type="button" onclick="clearSession(); location.href='/login.html'">Logout</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <div class="panel">
+      <h2>Lawyer Dashboard</h2>
+
+      <div class="page-actions">
+        <button class="btn btn-primary" onclick="location.href='/send.html'">Send Contract</button>
+      </div>
+
+      <h3>Sent Contracts</h3>
+      <p id="out"></p>
+      <ul id="list" class="list"></ul>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+(async () => {
+  try {
+    const s = getSession(); if (!s) return location.href="/login.html";
+    if (s.role !== "LAWYER") return location.href="/dashboard-client.html";
+
+    const keys = await getPrivateKeyWithUnlock(s.username, "Enter your unlock key to view sent contracts:");
+    if (!keys) { out.textContent = "No unlock key entered."; return; }
+    const { privKey } = keys;
+    window.__lawyerPrivKey = privKey;
+    window.__lawyerUser = s.username;
+
+    const ts = new Date().toISOString();
+    const payload = `REQ|SENT|${s.username}|-|-|${ts}`;
+    const sig = await signText(privKey, payload);
+
+    const r = await fetch(`/api/contracts/sent/${encodeURIComponent(s.username)}?timestampIso=${encodeURIComponent(ts)}&signatureB64=${encodeURIComponent(sig)}`);
+    const data = await r.json();
+    if (!data.ok) { out.textContent = data.error || "Request failed"; return; }
+
+    const items = (data.items || []).slice().reverse();
+    list.innerHTML = items.length ? items.map(c =>
+      `<li>
+        <div class="contract-text">
+          <div class="contract-row">
+            <span class="contract-label">Contract ID</span>
+            <span class="contract-value contract-id">${c.contractId}</span>
+          </div>
+          <div class="contract-row">
+            <span class="contract-label">Recipient</span>
+            <span class="contract-value">${c.recipient}</span>
+          </div>
+          <div class="contract-row">
+            <span class="contract-label">File</span>
+            <span class="contract-value">${c.filename}</span>
+          </div>
+        </div>
+        <div class="contract-actions">
+          <a class="btn btn-audit btn-small" href="/audit.html?id=${c.contractId}" onclick="setLastContractId('${c.contractId}')">Audit</a>
+          <button class="btn btn-muted btn-small" onclick="verifyEvidenceForContract('${c.contractId}')">Verify Evidence</button>
+        </div>
+      </li>`
+    ).join("") : "<li>No sent contracts yet.</li>";
+
+    if (items.length) {
+      setLastContractId(items[0].contractId);
+      updateAuditNavLink();
+    }
+  } catch (e) {
+    out.textContent = e?.message || String(e);
+    console.error(e);
+  }
+  window.verifyEvidenceForContract = async (contractId) => {
+    try {
+      const sender = window.__lawyerUser;
+      const privKey = window.__lawyerPrivKey;
+      if (!sender || !privKey) throw new Error("Missing session key. Refresh and unlock again.");
+
+      const setStatus = (msg, isError = false) => {
+        showVerifyModal(msg, isError);
+      };
+
+      // ---------- 1) FETCH + VERIFY RECEIPT ----------
+      const ts1 = new Date().toISOString();
+      const reqPayload1 = `REQ|RECEIPT|${sender}|-|${contractId}|${ts1}`;
+      const reqSigB64_1 = await signText(privKey, reqPayload1);
+
+      const receiptUrl =
+        `/api/contracts/${encodeURIComponent(contractId)}/receipt` +
+        `?username=${encodeURIComponent(sender)}` +
+        `&timestampIso=${encodeURIComponent(ts1)}` +
+        `&signatureB64=${encodeURIComponent(reqSigB64_1)}`;
+
+      const r1 = await fetch(receiptUrl);
+      const d1 = await r1.json();
+
+      if (!d1.ok) {
+        setStatus(d1.error || "Failed to fetch receipt", true);
+        return;
+      }
+
+      const recipient = d1.recipient;
+      const kbResp = await fetch(`/api/users/${encodeURIComponent(recipient)}/key-bundle`);
+      const kb = await kbResp.json();
+      if (!kb.ok) {
+        setStatus(`Could not load ${recipient}'s public key`, true);
+        return;
+      }
+
+      const pubKey = await importVerifyKeyFromSpkiB64(kb.publicKeyB64);
+
+      const receiptPayload =
+        `RECEIPT|${d1.contractId}|${d1.contractHashB64}|${d1.receiptTimestampIso}`;
+
+      const receiptOk = await verifyText(pubKey, receiptPayload, d1.receiptSignatureB64);
+
+      // ---------- 2) FETCH + VERIFY DECRYPT PROOF ----------
+      const ts2 = new Date().toISOString();
+      const reqPayload2 = `REQ|DECRYPT_PROOF|${sender}|-|${contractId}|${ts2}`;
+      const reqSigB64_2 = await signText(privKey, reqPayload2);
+
+      const proofUrl =
+        `/api/contracts/${encodeURIComponent(contractId)}/decrypt-proof` +
+        `?username=${encodeURIComponent(sender)}` +
+        `&timestampIso=${encodeURIComponent(ts2)}` +
+        `&signatureB64=${encodeURIComponent(reqSigB64_2)}`;
+
+      const r2 = await fetch(proofUrl);
+      const d2 = await r2.json();
+
+      if (!d2.ok) {
+        const msg =
+          `Receipt: ${receiptOk ? "VERIFIED" : "INVALID"}\n` +
+          `Decryption proof: NOT AVAILABLE\n` +
+          `Reason: ${d2.error || "unknown error"}`;
+        setStatus(msg, true);
+        return;
+      }
+
+      const proofPayload =
+        `DECRYPT_PROOF|${d2.contractId}|${d2.contractHashB64}|${d2.decryptProofTimestampIso}`;
+
+      const proofOk = await verifyText(pubKey, proofPayload, d2.decryptProofSignatureB64);
+
+      const finalOk = receiptOk && proofOk;
+      const msg =
+        `Receipt: ${receiptOk ? "VERIFIED" : "INVALID"}\n` +
+        `Decryption proof: ${proofOk ? "VERIFIED" : "INVALID"}`;
+
+      setStatus(msg, !finalOk);
+
+    } catch (e) {
+      console.error(e);
+      showVerifyModal(e?.message || String(e), true);
+    }
+  };
+})();
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+<div id="verifyModal" class="popup hidden" role="dialog" aria-modal="true" aria-labelledby="verifyModalTitle">
+  <div class="popup-card">
+    <h3 id="verifyModalTitle">Receipt + Decryption Verification</h3>
+    <p id="verifyModalBody" class="pre-line"></p>
+    <div class="popup-actions">
+      <button id="verifyModalClose" class="btn btn-muted btn-small" type="button">Close</button>
+    </div>
+  </div>
+</div>
+
+<script>
+(() => {
+  const modal = document.getElementById('verifyModal');
+  const body = document.getElementById('verifyModalBody');
+  const closeBtn = document.getElementById('verifyModalClose');
+
+  window.showVerifyModal = (message, isError = false) => {
+    if (!modal || !body) return;
+    body.textContent = message;
+    body.classList.toggle('popup-error', !!isError);
+    body.classList.toggle('popup-success', !isError);
+    modal.classList.remove('hidden');
+  };
+
+  const close = () => modal.classList.add('hidden');
+  closeBtn?.addEventListener('click', close);
+  modal?.addEventListener('click', (e) => { if (e.target === modal) close(); });
+})();
+</script>
+
+</body>
+</html>

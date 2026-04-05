@@ -1,0 +1,142 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"><title>Register</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/login.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Secure Contract Delivery</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/login.html">Login</a>
+      <a href="/register.html" class="btn btn-primary">Register</a>
+    </nav>
+  </div>
+</header>
+
+<main class="page page-center">
+  <div class="container">
+    <div class="panel">
+      <h2>Register</h2>
+
+      <div class="field">
+        <label for="username">Username</label>
+        <input id="username" placeholder="username">
+      </div>
+
+      <div class="field">
+        <label for="role">Select role</label>
+        <select id="role">
+          <option value="CLIENT">CLIENT</option>
+          <option value="LAWYER">LAWYER / Legal Consultant</option>
+        </select>
+      </div>
+
+      <div id="lawyerBox">
+        <div class="field">
+          <label for="lawyerCode">Lawyer invite code</label>
+          <input id="lawyerCode" placeholder="lawyer invite code" type="password">
+        </div>
+      </div>
+
+      <div class="field">
+        <label for="unlock">Unlock key</label>
+        <input id="unlock" placeholder="unlock key" type="password" minlength="6">
+        <small>Use at least 6 characters with 1 uppercase letter, 1 number, and 1 special character.</small>
+      </div>
+
+      <button id="btn" class="btn btn-primary">Create Account</button>
+      <p id="out"></p>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+const roleEl = document.getElementById("role");
+const lawyerBox = document.getElementById("lawyerBox");
+
+function refreshRoleUI() {
+  lawyerBox.style.display = (roleEl.value === "LAWYER") ? "block" : "none";
+}
+roleEl.addEventListener("change", refreshRoleUI);
+refreshRoleUI();
+
+function isValidUnlockKey(value) {
+  return value.length >= 6 &&
+    /[A-Z]/.test(value) &&
+    /\d/.test(value) &&
+    /[^A-Za-z0-9]/.test(value);
+}
+
+btn.onclick = async () => {
+  try {
+    out.textContent = "Generating keys...";
+
+    const username = document.getElementById("username").value.trim();
+    const role = roleEl.value;
+    const unlockKey = document.getElementById("unlock").value;
+    const lawyerCode = document.getElementById("lawyerCode").value;
+
+    if (!username) { out.textContent = "Enter a username."; return; }
+    if (!unlockKey) { out.textContent = "Enter an unlock key."; return; }
+    if (!isValidUnlockKey(unlockKey)) {
+      out.textContent = "Unlock key must be at least 6 characters and include 1 uppercase letter, 1 number, and 1 special character.";
+      return;
+    }
+    if (role === "LAWYER" && !lawyerCode) { out.textContent = "Enter the lawyer invite code."; return; }
+
+    const k = await generateAndStoreKeys(username, unlockKey);
+
+    const r = await fetch("/api/users/register", {
+      method: "POST",
+      headers: {"Content-Type":"application/json"},
+      body: JSON.stringify({
+        username,
+        role,
+        unlockKey,
+        lawyerCode,
+        publicKeyB64: k.pubSpkiB64,
+        saltB64: k.saltB64,
+        ivB64: k.ivB64,
+        encPrivB64: k.encPrivB64
+      })
+    });
+    const data = await r.json();
+    if (!data.ok) { out.textContent = data.error; return; }
+
+    location.href = "/login.html";
+  } catch (e) {
+    out.textContent = "Registration failed: " + (e?.message || e);
+  }
+};
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+

@@ -1,0 +1,119 @@
+﻿<!doctype html>
+<html lang="en">
+<head> 
+    <meta charset="utf-8"><title>Audit</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/login.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Audit & Verification</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/dashboard-client.html" class="btn btn-dark">Inbox</a>
+      <a href="/audit.html?global=1" class="btn btn-dark">Audit</a>
+      <button class="btn btn-primary" type="button" onclick="clearSession(); location.href='/login.html'">Logout</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <div class="panel">
+      <h2 id="title">Audit Log</h2>
+      <div class="field">
+        <label for="search">Search logs</label>
+        <input id="search" placeholder="Search by contract ID, event type, actor, or text">
+      </div>
+      <pre id="out"></pre>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+function qs(k){ return new URLSearchParams(location.search).get(k); }
+const out = document.getElementById("out");
+const title = document.getElementById("title");
+const search = document.getElementById("search");
+
+(async () => {
+  try {
+    const s = getSession(); if (!s) return location.href="/login.html";
+    if (s.role === "LAWYER") {
+      const inboxLink = document.querySelector('a[href="/dashboard-client.html"]');
+      if (inboxLink) {
+        inboxLink.textContent = "Dashboard";
+        inboxLink.setAttribute("href", "/dashboard-lawyer.html");
+      }
+    }
+    const forceGlobal = qs("global") === "1";
+    let id = forceGlobal ? null : qs("id");
+    updateAuditNavLink();
+    title.textContent = id ? "Audit Log" : "Global Audit Log";
+
+    const keys = await getPrivateKeyWithUnlock(s.username, "Enter your unlock key to view audit:");
+    if (!keys) { out.textContent = "No unlock key entered."; return; }
+    const { privKey } = keys;
+    const ts = new Date().toISOString();
+    const target = id || "ALL";
+    const payload = id
+      ? `REQ|AUDIT|${s.username}|-|${id}|${ts}`
+      : `REQ|AUDIT_GLOBAL|${s.username}|-|${target}|${ts}`;
+    const sig = await signText(privKey, payload);
+
+    const url = id
+      ? `/api/contracts/${id}/audit?username=${encodeURIComponent(s.username)}&timestampIso=${encodeURIComponent(ts)}&signatureB64=${encodeURIComponent(sig)}`
+      : `/api/contracts/audit/history?username=${encodeURIComponent(s.username)}&timestampIso=${encodeURIComponent(ts)}&signatureB64=${encodeURIComponent(sig)}`;
+
+    const r = await fetch(url);
+    const d = await r.json();
+    if (!d.ok) { out.textContent = d.error; return; }
+
+    const allLines = Array.isArray(d.lines) ? d.lines : [];
+    const emptyMessage = id ? "No audit entries for this contract yet." : "No audit entries recorded yet.";
+    const render = () => {
+      const q = (search.value || "").trim().toLowerCase();
+      const filtered = q
+        ? allLines.filter(line => line.toLowerCase().includes(q))
+        : allLines;
+      out.textContent = filtered.length
+        ? filtered.join("\n")
+        : emptyMessage;
+    };
+
+    search.addEventListener("input", render);
+    render();
+  } catch (e) {
+    out.textContent = e?.message || String(e);
+    console.error(e);
+  }
+})();
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+

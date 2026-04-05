@@ -1,0 +1,113 @@
+﻿<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8"><title>Client Dashboard</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="styles.css?v=5">
+</head>
+<body>
+
+<header class="site-header">
+  <div class="container navbar">
+    <a class="brand" href="/dashboard-client.html">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <span>
+        <span class="brand-name">Aurum Law</span>
+        <span class="brand-tag">Client Portal</span>
+      </span>
+    </a>
+
+    <button class="nav-toggle" type="button" aria-controls="navLinks" aria-expanded="false">Menu</button>
+
+    <nav id="navLinks" class="nav-links" aria-label="Primary">
+      <a href="/dashboard-client.html" class="btn btn-dark">Inbox</a>
+      <a href="/audit.html?global=1" class="btn btn-dark">Audit</a>
+      <button class="btn btn-primary" type="button" onclick="clearSession(); location.href='/login.html'">Logout</button>
+    </nav>
+  </div>
+</header>
+
+<main class="page">
+  <div class="container">
+    <div class="panel">
+      <h2>Client Dashboard</h2>
+
+      <h3>Inbox</h3>
+      <p id="out"></p>
+      <ul id="list" class="list"></ul>
+    </div>
+  </div>
+</main>
+
+<script src="app.js?v=4"></script>
+<script>
+(async () => {
+  try {
+    const s = getSession(); if (!s) return location.href="/login.html";
+    if (s.role !== "CLIENT") return location.href="/dashboard-lawyer.html";
+
+    updateAuditNavLink();
+
+    const keys = await getPrivateKeyWithUnlock(s.username, "Enter your unlock key to view inbox:");
+    if (!keys) { out.textContent = "No unlock key entered."; return; }
+    const { privKey } = keys;
+
+    const ts = new Date().toISOString();
+    const payload = `REQ|INBOX|${s.username}|-|-|${ts}`;
+    const sig = await signText(privKey, payload);
+
+    const r = await fetch(`/api/contracts/inbox/${encodeURIComponent(s.username)}?timestampIso=${encodeURIComponent(ts)}&signatureB64=${encodeURIComponent(sig)}`);
+    const data = await r.json();
+    if (!data.ok) { out.textContent = data.error || "Request failed"; return; }
+
+    const items = (data.items || []).slice().reverse();
+    list.innerHTML = items.length ? items.map(c =>
+      `<li>
+        <div class="contract-text">
+          <div class="contract-row">
+            <span class="contract-label">Contract ID</span>
+            <span class="contract-value contract-id">${c.contractId}</span>
+          </div>
+          <div class="contract-row">
+            <span class="contract-label">Sender</span>
+            <span class="contract-value">${c.sender}</span>
+          </div>
+          <div class="contract-row">
+            <span class="contract-label">File</span>
+            <span class="contract-value">${c.filename}</span>
+          </div>
+        </div>
+        <div class="contract-actions">
+          <a class="btn btn-muted btn-small" href="/contract.html?id=${c.contractId}" onclick="setLastContractId('${c.contractId}')">Open</a>
+          <a class="btn btn-audit btn-small" href="/audit.html?id=${c.contractId}" onclick="setLastContractId('${c.contractId}')">Audit</a>
+        </div>
+      </li>`
+    ).join("") : "<li>No contracts yet.</li>";
+
+    if (items.length) {
+      setLastContractId(items[0].contractId);
+      updateAuditNavLink();
+    }
+  } catch (e) {
+    out.textContent = e?.message || String(e);
+    console.error(e);
+  }
+})();
+</script>
+
+<script>
+(() => {
+  const t = document.querySelector('.nav-toggle');
+  const nav = document.getElementById('navLinks');
+  if (!t || !nav) return;
+  t.addEventListener('click', () => {
+    const open = nav.classList.toggle('is-open');
+    t.setAttribute('aria-expanded', open ? 'true' : 'false');
+  });
+})();
+</script>
+
+</body>
+</html>
+
+
