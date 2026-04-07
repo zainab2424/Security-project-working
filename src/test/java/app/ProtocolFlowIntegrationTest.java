@@ -17,13 +17,14 @@ import static org.junit.jupiter.api.Assertions.assertNotEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-class ProtocolFlowIntegrationTest {
+
+class ProtocolFlowIntegrationTest { // Integration tests for the main protocol flow.
     private TestFixtures.UserIdentity sender;
     private TestFixtures.UserIdentity recipient;
     private ContractController controller;
 
     @BeforeAll
-    static void beforeAll() throws Exception {
+    static void beforeAll() throws Exception {  // Starts shared test environment once for this test class.
         TestEnvironmentSupport.beginSuite();
     }
 
@@ -33,7 +34,7 @@ class ProtocolFlowIntegrationTest {
     }
 
     @BeforeEach
-    void setUp() throws Exception {
+    void setUp() throws Exception {  // Resets state and prepares test users before each run.
         TestEnvironmentSupport.resetForTest();
         sender = TestFixtures.fixedAliceLawyer();
         recipient = TestFixtures.fixedBobClient();
@@ -41,8 +42,8 @@ class ProtocolFlowIntegrationTest {
         controller = new ContractController();
     }
 
-    @Test
-    void uploadContract_acceptsEncryptedPayloadAndPersistsContract() throws Exception {
+    @Test 
+    void uploadContract_acceptsEncryptedPayloadAndPersistsContract() throws Exception {  // Upload should accept encrypted payload and store contract data.
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
 
         assertNotNull(uploaded.contractId());
@@ -61,7 +62,7 @@ class ProtocolFlowIntegrationTest {
         assertEquals(uploaded.protectedContract().contractCtB64(), contractData.get("contractCtB64"));
     }
 
-    @Test
+    @Test  // Sending a contract should create both contract ID and metadata entry.
     void sendContract_createsContractIdAndMetadataIndex() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
 
@@ -81,7 +82,7 @@ class ProtocolFlowIntegrationTest {
         assertEquals(uploaded.contractId(), inboxItems.get(0).contractId());
     }
 
-    @Test
+    @Test // Recipient can fetch encrypted data before receipt, but not the released key.
     void recipientCanFetchEncryptedContractButNotReleasedKeyBeforeReceipt() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -105,7 +106,7 @@ class ProtocolFlowIntegrationTest {
         assertTrue(String.valueOf(released.get("error")).contains("Receipt not received yet"));
     }
 
-    @Test
+    @Test // A valid receipt should be accepted and retrievable by the sender.
     void validReceiptSubmission_isAcceptedAndStored() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String receiptTs = Instant.now().toString();
@@ -134,7 +135,7 @@ class ProtocolFlowIntegrationTest {
         assertEquals(recipient.username(), senderReceipt.get("recipient"));
     }
 
-    @Test
+    @Test // Released key should become available after valid receipt submission.
     void releasedKey_availableImmediatelyAfterValidReceipt() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String receiptTs = Instant.now().toString();
@@ -160,7 +161,7 @@ class ProtocolFlowIntegrationTest {
         assertNotNull(released.get("wrapCtB64"));
     }
 
-    @Test
+    @Test  // Recipient should be able to decrypt and match the stored hash.
     void recipientCanUnwrapKeyDecryptContractAndMatchStoredHash() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease(TestFixtures.SAMPLE_CONTRACT);
 
@@ -185,7 +186,7 @@ class ProtocolFlowIntegrationTest {
         assertEquals(uploaded.protectedContract().contractHashB64(), CryptoUtils.b64(CryptoUtils.sha256(decrypted)));
     }
 
-    @Test
+    @Test  // Valid decrypt proof should be accepted and retrievable by the sender.
     void validDecryptProof_isAcceptedAndSenderCanFetchIt() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease(TestFixtures.SAMPLE_CONTRACT);
 
@@ -214,7 +215,7 @@ class ProtocolFlowIntegrationTest {
         assertEquals(recipient.username(), fetched.get("recipient"));
     }
 
-    @Test
+    @Test  // Valid decrypt proof should be accepted and retrievable by the sender.
     void fullHappyPath_uploadReceiptReleaseDecryptProof_succeeds() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease(TestFixtures.SAMPLE_CONTRACT);
 
@@ -265,6 +266,7 @@ class ProtocolFlowIntegrationTest {
         assertTrue(lines.stream().anyMatch(line -> line.contains("DECRYPT_PROOF_OK contractId=" + uploaded.contractId())));
     }
 
+     // Runs the flow up to successful key release.
     private TestFixtures.UploadResult completeHappyPathUntilKeyRelease(byte[] plaintext) throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, plaintext, false);
         String receiptTs = Instant.now().toString();
