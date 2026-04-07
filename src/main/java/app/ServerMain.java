@@ -21,17 +21,22 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 
+/*
+ * ServerMain is the socket-based delivery server.
+ * It stores registered user keys, protected contracts, OT-style state,
+ * and audit records, and it enforces the receipt and key-release protocol.
+ */
 public class ServerMain {
     private static final int PORT = 5050;
     private static final String BOGUS_ARTIFACT_TAG = "BOGUS_CERTIFIED_ARTIFACT_V1";
 
-    // user -> public key
+    // Maps usernames to registered public keys.
     private static final Map<String, PublicKey> USER_PUBKEYS = new ConcurrentHashMap<>();
 
-    // contractId -> stored contract
+    // Maps contract ids to stored contract state.
     private static final Map<String, StoredContract> CONTRACTS = new ConcurrentHashMap<>();
 
-    // audit log
+    // Persistent audit log store.
     private static final AuditLogStore AUDIT = new AuditLogStore();
 
     private static final File CONTRACTS_FILE = new File("web-data/contracts-store.json");
@@ -41,6 +46,7 @@ public class ServerMain {
     private static final ObjectMapper MAPPER = new ObjectMapper().enable(SerializationFeature.INDENT_OUTPUT);
 
     public static void main(String[] args) throws Exception {
+        // Restore persisted state before accepting requests.
         loadRegisteredUserKeys();
         loadContracts();
         System.out.println("Server listening on port " + PORT);
@@ -58,6 +64,7 @@ public class ServerMain {
         }
     }
 
+    /* Loads the shared gateway secret used for trusted direct requests. */
     private static String loadGatewaySecret() {
         try {
             if (!GATEWAY_SECRET_FILE.exists()) return null;
@@ -67,6 +74,7 @@ public class ServerMain {
         }
     }
 
+    /* Checks whether an incoming direct request came from the trusted web gateway. */
     private static boolean isAuthorizedGateway(Msg req) {
         return GATEWAY_SECRET != null
                 && req != null
@@ -74,28 +82,36 @@ public class ServerMain {
                 && GATEWAY_SECRET.equals(req.gatewayToken);
     }
 
+    /* Returns true if any bogus artifact fields are present in the request. */
     private static boolean hasBogusArtifact(Msg req) {
         return req.bogusArtifactTag != null || req.bogusContractIvB64 != null || req.bogusContractCtB64 != null
                 || req.bogusContractHashB64 != null || req.bogusEphPubB64 != null
                 || req.bogusWrapIvB64 != null || req.bogusWrapCtB64 != null;
     }
 
+    /* Returns true if all bogus artifact fields are present. */
     private static boolean isCompleteBogusArtifact(Msg req) {
         return req.bogusArtifactTag != null && req.bogusContractIvB64 != null && req.bogusContractCtB64 != null
                 && req.bogusContractHashB64 != null && req.bogusEphPubB64 != null
                 && req.bogusWrapIvB64 != null && req.bogusWrapCtB64 != null;
     }
 
+    /* Writes one audit event to the persistent audit log. */
     private static void recordAudit(String eventType, String actor, String contractId, String detail) {
         String timestampIso = CryptoUtils.nowIso();
         String line = timestampIso + " " + detail;
         AUDIT.append(timestampIso, contractId, eventType, actor, line);
     }
 
+    /*
+     * Handles one client connection.
+     * Supports registration, trusted gateway direct requests, and the normal auth flow.
+     */
     private static void handleClient(Socket s) throws IOException, GeneralSecurityException {
-        // 1) Expect REGISTER or AUTH_START
+        // Read the first incoming message for routing.
         Msg first = NetUtils.readJson(s, Msg.class);
 
+        // Handle public key registration
         if ("REGISTER".equals(first.type)) {
             PublicKey pk = CryptoUtils.bytesToPublicKey(CryptoUtils.b64d(first.publicKeyB64));
             USER_PUBKEYS.put(first.from, pk);
@@ -163,7 +179,7 @@ public class ServerMain {
             }
         }
 
-        // Otherwise fall back to original AUTH_START flow (optional)
+        // Otherwise fall back to original AUTH_START flow 
         if (!"AUTH_START".equals(first.type)) {
             Msg err = new Msg();
             err.type = "ERR";
@@ -172,7 +188,7 @@ public class ServerMain {
             return;
         }
 
-        // AUTH_START: client proves identity by signing nonce
+        // Look up the public key for the claimed user.
         String user = first.from;
         PublicKey pk = USER_PUBKEYS.get(user);
         if (pk == null) {
@@ -180,6 +196,7 @@ public class ServerMain {
             return;
         }
 
+        // Issue a nonce challenge
         Msg challenge = new Msg();
         challenge.type = "AUTH_CHALLENGE";
         byte[] nonce = new byte[32];
@@ -187,6 +204,7 @@ public class ServerMain {
         challenge.nonceB64 = CryptoUtils.b64(nonce);
         NetUtils.sendJson(s, challenge);
 
+        // Read the signed proof response
         Msg proof = NetUtils.readJson(s, Msg.class);
         if (!"AUTH_PROVE".equals(proof.type)) {
             Msg err = new Msg();
@@ -196,6 +214,7 @@ public class ServerMain {
             return;
         }
 
+        // Verify the signature over the nonce
         boolean ok = CryptoUtils.verify(pk, CryptoUtils.b64d(challenge.nonceB64), CryptoUtils.b64d(proof.signatureB64));
         if (!ok) {
             recordAudit("AUTH_FAIL", user, null, "AUTH_FAIL user=" + user);
@@ -206,13 +225,14 @@ public class ServerMain {
             return;
         }
 
+        // Authentication succeeded
         recordAudit("AUTH_OK", user, null, "AUTH_OK user=" + user);
         Msg authOk = new Msg();
         authOk.type = "AUTH_OK";
         authOk.ok = "true";
         NetUtils.sendJson(s, authOk);
 
-        // 2) After AUTH_OK, handle one request:
+        // Read and handle one follow-up request.
         Msg req = NetUtils.readJson(s, Msg.class);
 
         switch (req.type) {
@@ -235,6 +255,7 @@ public class ServerMain {
         }
     }
 
+    /* Stores a newly uploaded contract and prepares OT-style values when needed. */
     private static void handleUpload(Socket s, String sender, Msg req) throws IOException {
         boolean hasBogusArtifact = hasBogusArtifact(req);
         if (hasBogusArtifact && !isCompleteBogusArtifact(req)) {
@@ -280,6 +301,8 @@ public class ServerMain {
         c.bogusEphPubB64 = req.bogusEphPubB64;
         c.bogusWrapIvB64 = req.bogusWrapIvB64;
         c.bogusWrapCtB64 = req.bogusWrapCtB64;
+        
+         // Prepare OT-style offer values when bogus artifacts are present.
         if (hasBogusArtifact) {
             try {
                 Offer otOffer = OtUtils.buildOffer(
@@ -311,6 +334,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Returns encrypted contract data to the intended recipient. */
     private static void handleGetContract(Socket s, String user, Msg req) throws IOException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -345,6 +369,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+     /* Verifies and records a signed receipt from the recipient. */
     private static void handleReceipt(Socket s, String user, Msg req) throws IOException, GeneralSecurityException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -386,6 +411,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Returns OT-style offer data after receipt has been recorded. */
     private static void handleGetOtOffer(Socket s, String user, Msg req) throws IOException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -419,6 +445,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Verifies and stores the recipient's OT-style selection. */
     private static void handleOtSelection(Socket s, String user, Msg req) throws IOException, GeneralSecurityException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -485,6 +512,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Releases the wrapped key only after the required protocol conditions are met. */
     private static void handleReleasedKey(Socket s, String user, Msg req) throws IOException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -507,6 +535,8 @@ public class ServerMain {
         Msg resp = new Msg();
         resp.type = "RELEASED_KEY";
         resp.contractId = c.contractId;
+
+        // Return the selected wrapped key path.
         if (OtUtils.CHOICE_BOGUS.equals(c.otSelection)) {
             resp.ephPubB64 = c.bogusEphPubB64;
             resp.wrapIvB64 = c.bogusWrapIvB64;
@@ -529,6 +559,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+     /* Verifies and records recipient decryption proof after successful local decryption. */
     private static void handleDecryptProof(Socket s, String user, Msg req)
             throws IOException, GeneralSecurityException {
         StoredContract c = CONTRACTS.get(req.contractId);
@@ -549,6 +580,7 @@ public class ServerMain {
             return;
         }
 
+        // The witness hash must match the stored contract hash.
         if (!Objects.equals(req.contractHashB64, c.contractHashB64)) {
             sendErr(s, "Decrypt witness hash does not match stored contract hash");
             return;
@@ -586,6 +618,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Returns recorded decrypt proof data to the original sender. */
     private static void handleGetDecryptProof(Socket s, String user, Msg req) throws IOException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
@@ -617,6 +650,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Returns audit lines either globally or for one contract. */
     private static void handleAudit(Socket s, String user, Msg req) throws IOException {
         Msg resp = new Msg();
         resp.type = "AUDIT_DATA";
@@ -630,6 +664,7 @@ public class ServerMain {
         NetUtils.sendJson(s, resp);
     }
 
+    /* Sends a standard error response back to the client. */
     private static void sendErr(Socket s, String msg) throws IOException {
         Msg err = new Msg();
         err.type = "ERR";
@@ -637,6 +672,7 @@ public class ServerMain {
         NetUtils.sendJson(s, err);
     }
 
+    /* Restores registered public keys from disk on server startup. */
     private static void loadRegisteredUserKeys() {
         try {
             if (!USER_KEYS_FILE.exists()) return;
@@ -653,6 +689,7 @@ public class ServerMain {
         }
     }
 
+    /* Persists the registered public key map to disk. */
     private static synchronized void persistRegisteredUserKeys() {
         try {
             USER_KEYS_FILE.getParentFile().mkdirs();
@@ -671,6 +708,7 @@ public class ServerMain {
         }
     }
 
+    /* Restores stored contracts from disk on server startup. */
     private static void loadContracts() {
         try {
             if (!CONTRACTS_FILE.exists()) return;
@@ -684,6 +722,7 @@ public class ServerMain {
         }
     }
 
+    /* Persists the current contract map to disk. */
     private static synchronized void persistContracts() {
         try {
             CONTRACTS_FILE.getParentFile().mkdirs();
@@ -693,6 +732,7 @@ public class ServerMain {
         }
     }
 
+    /* Returns recorded receipt data to the original sender. */
     private static void handleGetReceipt(Socket s, String user, Msg req) throws IOException {
         StoredContract c = CONTRACTS.get(req.contractId);
         if (c == null) {
