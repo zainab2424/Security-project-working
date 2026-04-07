@@ -9,6 +9,11 @@ import java.nio.file.Files;
 import java.security.KeyPair;
 import java.security.PublicKey;
 
+/*
+ * SenderClientMain is a simple CLI client for the sender side of the protocol.
+ * It encrypts a contract, prepares the real and bogus artifacts, wraps the file keys,
+ * and uploads the protected contract to the server.
+ */
 public class SenderClientMain {
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 5050;
@@ -30,11 +35,15 @@ public class SenderClientMain {
         // Sender registers itself too (safe to re-register).
         ServerApi.register(sender, senderKeys.getPublic());
 
+        // Read the original contract file and compute its hash.
         byte[] plaintext = Files.readAllBytes(contractFile.toPath());
         byte[] contractHash = CryptoUtils.sha256(plaintext);
 
+        // Encrypt the real contract with a random AES file key.
         SecretKey fileKey = CryptoUtils.generateAesKey();
         CryptoUtils.AesGcmBlob enc = CryptoUtils.aesGcmEncrypt(fileKey, plaintext);
+        
+        // Build a separate bogus artifact for the OT-style transfer flow.
         byte[] bogusPlaintext = CryptoUtils.utf8(
                 BOGUS_ARTIFACT_TAG + "\nThis is a bogus protected message.\nOriginal file: "
                         + contractFile.getName() + "\nNonce: " + java.util.UUID.randomUUID()
@@ -43,15 +52,14 @@ public class SenderClientMain {
         SecretKey bogusFileKey = CryptoUtils.generateAesKey();
         CryptoUtils.AesGcmBlob bogusEnc = CryptoUtils.aesGcmEncrypt(bogusFileKey, bogusPlaintext);
 
-        // Fetch recipient public key by asking user to paste it? (Too annoying)
-        // Instead: this demo expects recipient already registered; server doesn't expose pubkeys publicly.
-        // Workaround for a simple course project: store recipient pubkey locally too (generated on recipient client)
+        // Load the recipient public key from local storage for wrapping.
         PublicKey recipientPk = LocalKeys.loadPublic(recipient);
 
+        // Wrap both the real and bogus file keys for the recipient.
         WrappedKey wrapped = CryptoUtils.wrapAesKeyForRecipient(recipientPk, fileKey, new java.security.SecureRandom());
         WrappedKey bogusWrapped = CryptoUtils.wrapAesKeyForRecipient(recipientPk, bogusFileKey, new java.security.SecureRandom());
 
-        // Upload ciphertext + wrapped key to server AFTER authenticating
+        // Build the upload message with all protected contract fields.
         Msg upload = new Msg();
         upload.type = "UPLOAD_CONTRACT";
         upload.from = sender;
@@ -71,13 +79,16 @@ public class SenderClientMain {
         upload.bogusWrapIvB64 = bogusWrapped.wrapIvB64();
         upload.bogusWrapCtB64 = bogusWrapped.wrapCtB64();
 
+        // Upload the contract after socket authentication.
         String contractId = ServerApi.authAndUpload(sender, senderKeys, upload);
         System.out.println("Uploaded contract. contractId=" + contractId);
         System.out.println("Recipient must submit receipt before key is released.");
         System.out.println("Done.");
     }
 
-    // Minimal local key storage helper
+    /*
+     * LocalKeys provides simple local file-based key storage for the CLI demo.
+     */
     static class LocalKeys {
         static KeyPair loadOrCreate(String user) throws Exception {
             File dir = new File("keys");
@@ -85,18 +96,21 @@ public class SenderClientMain {
             File privF = new File(dir, user + ".priv");
             File pubF = new File(dir, user + ".pub");
 
+            // Load existing key pair if present.
             if (privF.exists() && pubF.exists()) {
                 byte[] priv = Files.readAllBytes(privF.toPath());
                 byte[] pub = Files.readAllBytes(pubF.toPath());
                 return new KeyPair(CryptoUtils.bytesToPublicKey(pub), CryptoUtils.bytesToPrivateKey(priv));
             }
 
+            // Otherwise generate and save a new key pair.
             KeyPair kp = CryptoUtils.generateECKeyPair();
             Files.write(privF.toPath(), CryptoUtils.privateKeyToBytes(kp.getPrivate()));
             Files.write(pubF.toPath(), CryptoUtils.publicKeyToBytes(kp.getPublic()));
             return kp;
         }
 
+        /* Loads only the recipient public key used for key wrapping. */
         static PublicKey loadPublic(String user) throws Exception {
             File pubF = new File("keys/" + user + ".pub");
             if (!pubF.exists()) {
@@ -108,7 +122,11 @@ public class SenderClientMain {
         }
     }
 
+    /*
+     * ServerApi contains helper methods for socket requests made by the sender client.
+     */
     static class ServerApi {
+        /* Registers the sender public key on the server. */
         static void register(String user, PublicKey pk) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
                 Msg reg = new Msg();
@@ -123,15 +141,17 @@ public class SenderClientMain {
             }
         }
 
+        /* Authenticates the sender and uploads the protected contract. */
         static String authAndUpload(String user, KeyPair keys, Msg upload) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
-                // AUTH_START
+                // Start authentication handshake
                 Msg start = new Msg(); start.type="AUTH_START"; start.from=user;
                 NetUtils.sendJson(s, start);
 
                 Msg chal = NetUtils.readJson(s, Msg.class);
                 if (!"AUTH_CHALLENGE".equals(chal.type)) throw new RuntimeException("No challenge");
 
+                // Prove identity by signing the server nonce.
                 byte[] sig = CryptoUtils.sign(keys.getPrivate(), CryptoUtils.b64d(chal.nonceB64));
                 Msg prove = new Msg(); prove.type="AUTH_PROVE"; prove.from=user; prove.signatureB64 = CryptoUtils.b64(sig);
                 NetUtils.sendJson(s, prove);
@@ -139,6 +159,7 @@ public class SenderClientMain {
                 Msg ok = NetUtils.readJson(s, Msg.class);
                 if (!"AUTH_OK".equals(ok.type)) throw new RuntimeException("Auth failed: " + ok.error);
 
+                // Upload the contract after successful authentication.
                 NetUtils.sendJson(s, upload);
                 Msg resp = NetUtils.readJson(s, Msg.class);
                 if (!"UPLOAD_OK".equals(resp.type)) throw new RuntimeException("Upload failed: " + resp.error);
