@@ -11,16 +11,21 @@ import java.nio.file.Files;
 import java.util.Map;
 import java.util.Set;
 
+// Handles user registration and key-related API requests.
 @RestController
 @RequestMapping("/api/users")
 public class UserController {
     private final UserStore userStore = new UserStore();
     private final BridgeClient bridge = new BridgeClient("127.0.0.1", 5050);
 
+    // Allowed roles for registration.
     private static final Set<String> ALLOWED_ROLES = Set.of("LAWYER", "CLIENT");
+    
+    // Error message shown when the unlock key does not meet policy rules.
     private static final String PASSWORD_POLICY_ERROR =
             "Unlock key must be at least 6 characters and include 1 uppercase letter, 1 number, and 1 special character";
 
+    // Registers a new user and stores their key bundle.
     @PostMapping("/register")
     public Map<String, Object> register(@RequestBody Map<String, String> body) throws Exception {
         String username = body.get("username");
@@ -88,6 +93,7 @@ public class UserController {
         return Map.of("ok", true);
     }
 
+    // Checks whether the unlock key meets the minimum password policy.
     private boolean isValidUnlockKey(String unlockKey) {
         if (unlockKey == null || unlockKey.length() < 6) return false;
         boolean hasUppercase = false;
@@ -108,6 +114,7 @@ public class UserController {
         return hasUppercase && hasDigit && hasSpecial;
     }
 
+     // Reads the lawyer registration code from environment or file.
     private String getLawyerRegCode() {
         // Option 1: environment variable
         String env = System.getenv("LAWYER_REG_CODE");
@@ -123,6 +130,7 @@ public class UserController {
         }
     }
 
+    // Returns the public key for a user.
     @GetMapping("/{username}/public-key")
     public Map<String, Object> getPub(@PathVariable("username") String username) {
         var u = userStore.get(username);
@@ -130,6 +138,7 @@ public class UserController {
         return Map.of("ok", true, "publicKeyB64", u.publicKeyB64(), "role", u.role());
     }
 
+    // Returns the stored encrypted key bundle for a user.
     @GetMapping("/{username}/key-bundle")
     public Map<String, Object> getKeyBundle(@PathVariable("username") String username) {
         var u = userStore.get(username);
