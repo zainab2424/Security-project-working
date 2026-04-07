@@ -7,6 +7,7 @@
 </head>
 <body>
 
+<!-- Contract viewing page -->
 <header class="site-header">
   <div class="container navbar">
     <a class="brand" href="/dashboard-client.html">
@@ -33,10 +34,11 @@
       <h2>Contract</h2>
       <p id="meta"></p>
 
+      <!-- Button to acknowledge and open contract -->
       <button id="ack" class="btn btn-primary">Acknowledge Receipt &amp; Open</button>
-      <div id="fileActions" class="file-actions hidden"></div>
+      <div id="fileActions" class="file-actions hidden"></div> <!-- Area for file actions like open/download -->
       <p id="out"></p>
-      <div id="preview" class="preview hidden"></div>
+      <div id="preview" class="preview hidden"></div> <!-- Preview area for contract content -->
     </div>
   </div>
 </main>
@@ -47,8 +49,8 @@
 <script>
 const OT_CHOICE_REAL = "REAL";
 
-function qs(k){ return new URLSearchParams(location.search).get(k); }
-function escapeHtml(value) {
+function qs(k){ return new URLSearchParams(location.search).get(k); } // Get query parameter from URL
+function escapeHtml(value) { // Safely escape text for display
   return String(value)
     .replace(/&/g, "&amp;")
     .replace(/</g, "&lt;")
@@ -65,16 +67,16 @@ const preview = document.getElementById("preview");
 
 ack.disabled = true; // enable once page is ready
 
-function showStatus(message) {
+function showStatus(message) { // Display status messages to user
   out.textContent = message;
 }
 
-function renderPreviewText(bytes) {
+function renderPreviewText(bytes) { // Render text preview
   preview.innerHTML = `<pre>${escapeHtml(decodeText(bytes))}</pre>`;
   preview.classList.remove("hidden");
 }
 
-function renderPreviewPdf(bytes) {
+function renderPreviewPdf(bytes) { // Render PDF preview
   const blob = new Blob([bytes], { type: "application/pdf" });
   const url = URL.createObjectURL(blob);
   preview.innerHTML = "";
@@ -89,7 +91,7 @@ function renderPreviewPdf(bytes) {
   preview.classList.remove("hidden");
 }
 
-async function renderPreviewDocx(bytes) {
+async function renderPreviewDocx(bytes) { // Render DOCX preview (fallback handled inside)
   preview.innerHTML = "<div class=\"preview-message\">Loading DOCX preview...</div>";
   preview.classList.remove("hidden");
 
@@ -139,7 +141,7 @@ function renderPreviewBinary() {
   preview.classList.remove("hidden");
 }
 
-async function openContract(data, s, privKey, privEcdh, contractId) {
+async function openContract(data, s, privKey, privEcdh, contractId) { // Handle full contract opening + decryption flow
   try {
     ack.disabled = true;
     preview.classList.add("hidden");
@@ -318,7 +320,7 @@ async function openContract(data, s, privKey, privEcdh, contractId) {
   }
 }
 
-(async () => {
+(async () => { // Main page logic (fetch contract + setup UI)
   try {
     const s = getSession();
     if (!s) return location.href="/login.html";
