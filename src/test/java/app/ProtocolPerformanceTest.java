@@ -13,6 +13,7 @@ import java.util.Map;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+// Performance-focused tests for representative protocol operations.
 class ProtocolPerformanceTest {
     private TestFixtures.UserIdentity sender;
     private TestFixtures.UserIdentity recipient;
@@ -28,7 +29,7 @@ class ProtocolPerformanceTest {
         TestEnvironmentSupport.endSuite();
     }
 
-    @BeforeEach
+    @BeforeEach // Resets state and prepares test users before each run.
     void setUp() throws Exception {
         TestEnvironmentSupport.resetForTest();
         sender = TestFixtures.fixedAliceLawyer();
@@ -37,7 +38,7 @@ class ProtocolPerformanceTest {
         controller = new ContractController();
     }
 
-    @Test
+    @Test // Reports encryption time for different payload sizes.
     void encryptionTime_reportedForRepresentativePayloads() throws Exception {
         long small = measureEncryption(TestFixtures.SAMPLE_CONTRACT_SMALL);
         long medium = measureEncryption(TestFixtures.SAMPLE_CONTRACT_MEDIUM);
@@ -50,7 +51,7 @@ class ProtocolPerformanceTest {
         assertTrue(large < 5000);
     }
 
-    @Test
+    @Test // Reports decryption time after key release.
     void decryptionTime_reportedAfterKeyRelease() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease(TestFixtures.SAMPLE_CONTRACT_MEDIUM);
         String contractTs = Instant.now().toString();
@@ -77,7 +78,7 @@ class ProtocolPerformanceTest {
         assertTrue(elapsedMs < 5000);
     }
 
-    @Test
+    @Test // Reports end-to-end latency for the happy path.
     void happyPathLatency_reportedEndToEnd() throws Exception {
         long started = System.nanoTime();
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease(TestFixtures.SAMPLE_CONTRACT_SMALL);
@@ -103,7 +104,7 @@ class ProtocolPerformanceTest {
         assertTrue(elapsedMs < 8000);
     }
 
-    @Test
+    @Test // Reports total time for several sequential contract runs.
     void sequentialContracts_scalingReportForMultipleRuns() throws Exception {
         long started = System.nanoTime();
         for (int i = 0; i < 5; i++) {
@@ -115,12 +116,14 @@ class ProtocolPerformanceTest {
         assertTrue(elapsedMs < 15000);
     }
 
+    // Measures encryption time for a given payload.
     private long measureEncryption(byte[] payload) throws Exception {
         long started = System.nanoTime();
         TestFixtures.protectForRecipient(payload, recipient, false);
         return Duration.ofNanos(System.nanoTime() - started).toMillis();
     }
 
+    // Runs the flow up to successful key release.
     private TestFixtures.UploadResult completeHappyPathUntilKeyRelease(byte[] plaintext) throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, plaintext, false);
         String receiptTs = Instant.now().toString();
