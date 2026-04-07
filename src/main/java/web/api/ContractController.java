@@ -16,24 +16,32 @@ import java.time.Instant;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+// Handles contract-related API requests.
 @RestController
 @RequestMapping("/api/contracts")
 public class ContractController {
+    // Tag used to identify bogus protected artifacts.
     private static final String BOGUS_ARTIFACT_TAG = "BOGUS_CERTIFIED_ARTIFACT_V1";
 
+    // Bridge used to communicate with the socket server.
     private final BridgeClient bridge = new BridgeClient("127.0.0.1", 5050);
     private final ContractStore contractStore = new ContractStore();
+    
     // ---------------- Replay Protection ----------------
+    
     // Accept timestamps within +/- 120 seconds of server time
     private static final long MAX_SKEW_MS = Duration.ofSeconds(120).toMillis();
 
     // Keep seen signed payloads for 10 minutes (prevents reuse)
     private static final long SEEN_TTL_MS = Duration.ofMinutes(10).toMillis();
 
-    // signedPayload -> expiryEpochMs
+    // Stores previously seen signed payloads.
     private static final ConcurrentHashMap<String, Long> SEEN = new ConcurrentHashMap<>();
+
+    // Counter used for periodic replay cache cleanup.
     private static final AtomicLong REPLAY_COUNTER = new AtomicLong(0);
 
+    // Checks whether a request timestamp is still valid.
     private static boolean isFreshTimestamp(String timestampIso) {
         try {
             long ts = Instant.parse(timestampIso).toEpochMilli();
@@ -44,6 +52,7 @@ public class ContractController {
         }
     }
 
+    // Stores a signed payload if it has not already been used.
     private static boolean markIfNotReplayed(String signedPayload) {
         long now = System.currentTimeMillis();
 
@@ -75,6 +84,7 @@ public class ContractController {
         return new UserStore();
     }
 
+    // Checks whether any bogus artifact fields were provided.
     private static boolean hasAnyBogusField(String... values) {
         for (String value : values) {
             if (value != null && !value.isBlank()) return true;
@@ -82,6 +92,7 @@ public class ContractController {
         return false;
     }
 
+    // Checks whether all bogus artifact fields were provided.
     private static boolean hasAllBogusFields(String... values) {
         for (String value : values) {
             if (value == null || value.isBlank()) return false;
@@ -119,6 +130,7 @@ public class ContractController {
         }
     }
 
+    // Checks whether all bogus artifact fields were provided.
     private String ensureRegisteredOnSocketServer(String username) {
         try {
             PublicKey pk = users().getPublicKey(username);
@@ -137,6 +149,7 @@ public class ContractController {
         }
     }
 
+    // Sends an encrypted contract to another user.
     @PostMapping("/send")
     public Map<String, Object> sendContract(@RequestBody Map<String, String> body) throws Exception {
         String from = body.get("from");
@@ -223,6 +236,8 @@ public class ContractController {
         contractStore.add(resp.contractId, from, to, filename);
         return Map.of("ok", true, "contractId", resp.contractId);
     }
+    
+    // Returns the signed receipt for a contract to the sender.
     @GetMapping("/{contractId}/receipt")
     public Map<String, Object> getReceipt(@PathVariable("contractId") String contractId,
                                         @RequestParam("username") String username,
@@ -259,6 +274,7 @@ public class ContractController {
         );
     }
 
+    // Returns contracts sent by the given user.
     @GetMapping("/sent/{username}")
     public Map<String, Object> sent(@PathVariable("username") String username,
                                     @RequestParam("timestampIso") String timestampIso,
@@ -271,6 +287,7 @@ public class ContractController {
         return Map.of("ok", true, "items", items);
     }
 
+    // Returns contracts received by the given user.
     @GetMapping("/inbox/{username}")
     public Map<String, Object> inbox(@PathVariable("username") String username,
                                      @RequestParam("timestampIso") String timestampIso,
@@ -283,6 +300,7 @@ public class ContractController {
         return Map.of("ok", true, "items", items);
     }
 
+    // Returns encrypted contract data for the recipient.
     @GetMapping("/{contractId}")
     public Map<String, Object> getContract(@PathVariable("contractId") String contractId,
                                            @RequestParam("username") String username,
@@ -323,6 +341,7 @@ public class ContractController {
         return out;
     }
 
+    // Returns the decrypt proof for a contract to the sender.
     @GetMapping("/{contractId}/decrypt-proof")
     public Map<String, Object> getDecryptProof(@PathVariable("contractId") String contractId,
                                             @RequestParam("username") String username,
@@ -361,6 +380,7 @@ public class ContractController {
         );
     }
 
+    // Returns the OT offer for the recipient.
     @GetMapping("/{contractId}/ot-offer")
     public Map<String, Object> getOtOffer(@PathVariable("contractId") String contractId,
                                           @RequestParam("username") String username,
@@ -392,6 +412,7 @@ public class ContractController {
         return out;
     }
 
+    // Submits a signed receipt for a contract.
     @PostMapping("/{contractId}/receipt")
     public Map<String, Object> receipt(@PathVariable("contractId") String contractId,
                                        @RequestBody Map<String, String> body) throws Exception {
@@ -419,6 +440,7 @@ public class ContractController {
         return Map.of("ok", true);
     }
 
+    // Submits decrypt proof after successful decryption.
     @PostMapping("/{contractId}/decrypt-proof")
     public Map<String, Object> decryptProof(@PathVariable("contractId") String contractId,
                                             @RequestBody Map<String, String> body) throws Exception {
@@ -448,6 +470,7 @@ public class ContractController {
         return Map.of("ok", true);
     }
 
+    // Submits the OT selection for a contract.
     @PostMapping("/{contractId}/ot-select")
     public Map<String, Object> submitOtSelection(@PathVariable("contractId") String contractId,
                                                  @RequestBody Map<String, String> body) throws Exception {
@@ -487,6 +510,7 @@ public class ContractController {
         return Map.of("ok", true, "otSelection", resp.otSelection);
     }
 
+    // Returns the released wrapped key for the recipient.
     @GetMapping("/{contractId}/released-key")
     public Map<String, Object> releasedKey(@PathVariable("contractId") String contractId,
                                            @RequestParam("username") String username,
@@ -522,6 +546,7 @@ public class ContractController {
         return out;
     }
 
+    // Returns audit history, optionally filtered by contract.
     @GetMapping("/audit/history")
     public Map<String, Object> globalAudit(@RequestParam("username") String username,
                                            @RequestParam("timestampIso") String timestampIso,
@@ -556,6 +581,7 @@ public class ContractController {
         return Map.of("ok", true, "lines", lines);
     }
 
+    // Returns audit history for a specific contract.
     @GetMapping("/{contractId}/audit")
     public Map<String, Object> audit(@PathVariable("contractId") String contractId,
                                      @RequestParam("username") String username,
