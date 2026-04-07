@@ -8,8 +8,10 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 
+// Tests audit log storage and ordering behavior.
 class AuditLogStoreTest {
     @Test
+    // Confirms entries are saved and returned newest first.
     void persistsAndReturnsNewestFirst() throws Exception {
         File dir = Files.createTempDirectory("audit-log-store-test").toFile();
         File file = new File(dir, "audit-log.json");
@@ -28,6 +30,7 @@ class AuditLogStoreTest {
     }
 
     @Test
+    // Confirms filtering by contract keeps descending order.
     void filtersByContractWithoutLosingOrder() throws Exception {
         File dir = Files.createTempDirectory("audit-log-store-filter-test").toFile();
         File file = new File(dir, "audit-log.json");
