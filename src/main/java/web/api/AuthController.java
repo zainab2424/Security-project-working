@@ -5,13 +5,15 @@ import web.store.UserStore;
 
 import java.util.Map;
 
+// Handles authentication-related API requests.
 @RestController
 @RequestMapping("/api")
 public class AuthController {
 
+    // Logs in a user by checking whether the username exists.
     @PostMapping("/login")
     public Map<String, Object> login(@RequestBody Map<String, String> body) {
-        // Re-read users.json every login (avoids stale instance issue)
+        // Re-read users.json each login to use the latest stored data.
         UserStore userStore = new UserStore();
 
         String username = body.get("username");
@@ -21,4 +23,3 @@ public class AuthController {
         return Map.of("ok", true, "role", u.role());
     }
 }
-
