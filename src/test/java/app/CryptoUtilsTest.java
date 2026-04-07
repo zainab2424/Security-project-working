@@ -8,8 +8,10 @@ import javax.crypto.SecretKey;
 import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 
+// Tests core wrapping and decryption behavior in CryptoUtils.
 class CryptoUtilsTest {
     @Test
+     // Intended recipient should be able to unwrap and decrypt successfully.
     void wrapsUnwrapsAndDecryptsForIntendedRecipient() throws Exception {
         var recipient = TestFixtures.fixedBobClient();
         byte[] plaintext = TestFixtures.SAMPLE_CONTRACT;
@@ -29,6 +31,7 @@ class CryptoUtilsTest {
     }
 
     @Test
+    // Wrong private key should not unwrap the recipient's key.
     void wrongPrivateKeyCannotUnwrapRecipientKey() throws Exception {
         var recipient = TestFixtures.fixedBobClient();
         var wrongUser = TestFixtures.fixedAliceLawyer();
