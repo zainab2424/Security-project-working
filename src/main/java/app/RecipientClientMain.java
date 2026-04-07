@@ -10,6 +10,11 @@ import java.security.KeyPair;
 import java.security.PublicKey;
 import java.util.Scanner;
 
+/*
+ * RecipientClientMain is a simple CLI client for the recipient side of the protocol.
+ * It fetches a contract, submits a receipt, completes OT-style selection if needed,
+ * retrieves the released key, decrypts the contract, and saves the output locally.
+ */
 public class RecipientClientMain {
     private static final String HOST = "127.0.0.1";
     private static final int PORT = 5050;
@@ -21,13 +26,14 @@ public class RecipientClientMain {
         }
         String recipient = args[0];
 
+        // Load existing keys for the recipient or create them on first run.
         KeyPair recipientKeys = LocalKeys.loadOrCreate(recipient);
 
-        // Register recipient public key with server
+        // Register recipient public key with the server.
         ServerApi.register(recipient, recipientKeys.getPublic());
         System.out.println("Recipient registered and ready.");
 
-        // Use try-with-resources to avoid resource leak warning
+        // Read the contract id to fetch from the user.
         try (Scanner sc = new Scanner(System.in)) {
             System.out.print("Enter contractId to fetch: ");
             String contractId = sc.nextLine().trim();
@@ -36,11 +42,12 @@ public class RecipientClientMain {
             Msg contract = ServerApi.authAndGetContract(recipient, recipientKeys, contractId);
             System.out.println("Fetched encrypted contract: " + contract.filename + " from " + contract.from);
 
-            // 2) Create and submit receipt (sign)
+            // 2) Create and submit receipt (sign payload)
             String ts = CryptoUtils.nowIso();
             String receiptPayload = "RECEIPT|" + contractId + "|" + contract.contractHashB64 + "|" + ts;
             byte[] receiptSig = CryptoUtils.sign(recipientKeys.getPrivate(), CryptoUtils.utf8(receiptPayload));
 
+            // Submit the receipt before key release.
             boolean submitted = ServerApi.authAndSubmitReceipt(recipient, recipientKeys, contractId, ts, receiptSig);
             if (!submitted) {
                 System.out.println("Receipt submission failed.");
@@ -71,16 +78,17 @@ public class RecipientClientMain {
                 System.out.println("OT selection recorded.");
             }
 
-            // 4) Get released wrapped key
+            // 4) Request released wrapped key
             Msg keyMsg = ServerApi.authAndGetReleasedKey(recipient, recipientKeys, contractId);
 
+            // Unwrap the AES file key using the recipient private key.
             WrappedKey wrapped = new WrappedKey(keyMsg.ephPubB64, keyMsg.wrapIvB64, keyMsg.wrapCtB64);
             SecretKey fileKey = CryptoUtils.unwrapAesKey(recipientKeys.getPrivate(), wrapped);
 
             // 5) Decrypt file
             byte[] plaintext = CryptoUtils.aesGcmDecrypt(fileKey, contract.contractIvB64, contract.contractCtB64);
 
-            // 6) Verify hash matches
+            // Verify the decrypted plaintext hash against the stored contract hash.
             byte[] h = CryptoUtils.sha256(plaintext);
             String hB64 = CryptoUtils.b64(h);
             if (!hB64.equals(contract.contractHashB64)) {
@@ -97,7 +105,10 @@ public class RecipientClientMain {
         }
     }
 
-    // Minimal local key storage helper
+    /*
+     * LocalKeys provides simple local file-based key storage for the CLI demo.
+     * Keys are created on first run and reused afterward.
+     */
     static class LocalKeys {
         static KeyPair loadOrCreate(String user) throws Exception {
             File dir = new File("keys");
@@ -105,12 +116,14 @@ public class RecipientClientMain {
             File privF = new File(dir, user + ".priv");
             File pubF = new File(dir, user + ".pub");
 
+            // Load existing key pair if both files are present.
             if (privF.exists() && pubF.exists()) {
                 byte[] priv = Files.readAllBytes(privF.toPath());
                 byte[] pub = Files.readAllBytes(pubF.toPath());
                 return new KeyPair(CryptoUtils.bytesToPublicKey(pub), CryptoUtils.bytesToPrivateKey(priv));
             }
 
+            // Otherwise generate and store a new pair
             KeyPair kp = CryptoUtils.generateECKeyPair();
             Files.write(privF.toPath(), CryptoUtils.privateKeyToBytes(kp.getPrivate()));
             Files.write(pubF.toPath(), CryptoUtils.publicKeyToBytes(kp.getPublic()));
@@ -118,6 +131,10 @@ public class RecipientClientMain {
         }
     }
 
+    /*
+     * ServerApi contains helper methods for authenticated socket requests
+     * made by the recipient client.
+     */
     static class ServerApi {
         static void register(String user, PublicKey pk) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
@@ -130,6 +147,7 @@ public class RecipientClientMain {
             }
         }
 
+        /* Performs the socket authentication handshake for the given user. */
         static void doAuth(java.net.Socket s, String user, KeyPair keys) throws Exception {
             Msg start = new Msg();
             start.type = "AUTH_START";
@@ -154,6 +172,7 @@ public class RecipientClientMain {
             }
         }
 
+        /* Fetches the encrypted contract for the authenticated recipient. */
         static Msg authAndGetContract(String user, KeyPair keys, String contractId) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
                 doAuth(s, user, keys);
@@ -172,6 +191,7 @@ public class RecipientClientMain {
             }
         }
 
+        /* Submits a signed receipt for the contract. */
         static boolean authAndSubmitReceipt(String user, KeyPair keys, String contractId, String tsIso, byte[] sig) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
                 doAuth(s, user, keys);
@@ -193,6 +213,7 @@ public class RecipientClientMain {
             }
         }
 
+         /* Requests the released wrapped AES key after receipt verification. */
         static Msg authAndGetReleasedKey(String user, KeyPair keys, String contractId) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
                 doAuth(s, user, keys);
@@ -211,6 +232,7 @@ public class RecipientClientMain {
             }
         }
 
+        /* Fetches OT-style offer data if the contract uses the OT stage. */
         static Msg authAndGetOtOffer(String user, KeyPair keys, String contractId) throws Exception {
             try (var s = new java.net.Socket(HOST, PORT)) {
                 doAuth(s, user, keys);
@@ -228,6 +250,7 @@ public class RecipientClientMain {
             }
         }
 
+        /* Submits the recipient's OT-style selection. */
         static boolean authAndSubmitOtSelection(String user,
                                                 KeyPair keys,
                                                 String contractId,
