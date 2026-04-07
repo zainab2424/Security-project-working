@@ -7,6 +7,7 @@
 </head>
 <body>
 
+<!-- Audit page layout and navigation -->
 <header class="site-header">
   <div class="container navbar">
     <a class="brand" href="/login.html">
@@ -27,26 +28,30 @@
   </div>
 </header>
 
+<!-- Main audit log container -->
 <main class="page">
   <div class="container">
     <div class="panel">
       <h2 id="title">Audit Log</h2>
       <div class="field">
         <label for="search">Search logs</label>
+        <!-- Search input for filtering audit logs -->
         <input id="search" placeholder="Search by contract ID, event type, actor, or text">
       </div>
-      <pre id="out"></pre>
+      <pre id="out"></pre> <!-- Output area where audit logs are displayed -->
     </div>
   </div>
 </main>
 
 <script src="app.js?v=4"></script>
 <script>
+// Utility to get query parameters from URL
 function qs(k){ return new URLSearchParams(location.search).get(k); }
 const out = document.getElementById("out");
 const title = document.getElementById("title");
 const search = document.getElementById("search");
 
+// Main function to fetch and display audit logs
 (async () => {
   try {
     const s = getSession(); if (!s) return location.href="/login.html";
@@ -82,6 +87,7 @@ const search = document.getElementById("search");
 
     const allLines = Array.isArray(d.lines) ? d.lines : [];
     const emptyMessage = id ? "No audit entries for this contract yet." : "No audit entries recorded yet.";
+    // Filter and render audit results based on search input
     const render = () => {
       const q = (search.value || "").trim().toLowerCase();
       const filtered = q
@@ -102,6 +108,7 @@ const search = document.getElementById("search");
 </script>
 
 <script>
+// Mobile navigation toggle
 (() => {
   const t = document.querySelector('.nav-toggle');
   const nav = document.getElementById('navLinks');
