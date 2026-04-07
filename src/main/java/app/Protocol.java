@@ -2,6 +2,10 @@ package app;
 
 import com.fasterxml.jackson.annotation.JsonInclude;
 
+/*
+ * Protocol defines the shared message and storage structures used by the
+ * web gateway, delivery server, and client code.
+ */
 @JsonInclude(JsonInclude.Include.NON_NULL)
 public class Protocol {
 
@@ -11,12 +15,12 @@ public class Protocol {
         public String from;
         public String to;
 
-        // for auth handshake
+        // Authentication fields
         public String nonceB64;
         public String signatureB64;
         public String publicKeyB64;
 
-        // contract delivery
+        // Contract delivery fields
         public String contractId;
         public String filename;
         public String contractIvB64;
@@ -27,7 +31,7 @@ public class Protocol {
         public String bogusContractCtB64;
         public String bogusContractHashB64;
 
-        // wrapped file key (only released after receipt)
+        // Wrapped file key fields
         public String ephPubB64;
         public String wrapIvB64;
         public String wrapCtB64;
@@ -40,25 +44,28 @@ public class Protocol {
         public String otBogusCommitmentB64;
         public String otSelection;
 
-        // receipt
+        // Receipt and decrypt proof status fields
         public String timestampIso;
         public Boolean receiptReceived;
         public Boolean decryptProofReceived;
         public String receiptTimestampIso;
         public String decryptProofTimestampIso;
 
+        // Trusted gateway field
         public String gatewayToken;
 
-        // status
+        // Generic status fields
         public String ok;
         public String error;
     }
 
+    /* Stores a registered user's public key for persistence on the delivery server. */
     public static class RegisteredUserKey {
         public String username;
         public String publicKeyB64;
     }
 
+     /* Stores one protected contract and all related protocol state. */
     public static class StoredContract {
         public String contractId;
         public String sender;
