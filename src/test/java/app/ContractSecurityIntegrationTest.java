@@ -17,18 +17,19 @@ import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
+// Integration tests for contract security checks and failure cases.
 class ContractSecurityIntegrationTest {
     private TestFixtures.UserIdentity sender;
     private TestFixtures.UserIdentity recipient;
     private TestFixtures.UserIdentity otherRecipient;
     private ContractController controller;
 
-    @BeforeAll
+    @BeforeAll  // Starts shared test environment once for this test class.
     static void beforeAll() throws Exception {
         TestEnvironmentSupport.beginSuite();
     }
 
-    @AfterAll
+    @AfterAll // Resets state and prepares fresh test users before each test.
     static void afterAll() throws Exception {
         TestEnvironmentSupport.endSuite();
     }
@@ -44,6 +45,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Tampered ciphertext should fail during decryption/integrity validation.
     void tamperedCiphertext_failsIntegrityAfterDecrypt() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease();
         String contractTs = Instant.now().toString();
@@ -68,6 +70,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // A modified receipt payload should fail signature verification.
     void tamperedReceiptPayload_signatureVerificationFails() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String signedTs = Instant.now().toString();
@@ -87,6 +90,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+     // A receipt signed by the wrong user should be rejected.
     void forgedReceiptSignedBySender_isRejected() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -105,6 +109,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+     // Receipt must match the correct stored contract hash.
     void receiptForWrongContractHash_isRejected() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -122,6 +127,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // The same valid receipt cannot be submitted twice.
     void validReceiptReplayedSecondTime_isRejectedAsDuplicate() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -147,6 +153,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Released key should not be available before receipt submission.
     void releasedKeyDeniedWithoutReceipt() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -162,6 +169,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Only the intended recipient can fetch the contract.
     void unauthorizedUserCannotFetchContract() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -178,6 +186,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Only the intended recipient can fetch the released key.
     void unauthorizedUserCannotFetchReleasedKey() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease();
         String ts = Instant.now().toString();
@@ -194,6 +203,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // A different private key should not decrypt the released contract.
     void wrongPrivateKeyCannotDecryptReleasedContract() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease();
         String contractTs = Instant.now().toString();
@@ -216,6 +226,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Sender cannot forge decrypt proof on behalf of recipient.
     void senderCannotForgeDecryptProofAsRecipient() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease();
         String ts = Instant.now().toString();
@@ -234,6 +245,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Audit log should contain expected events for the contract flow.
     void auditLogContainsProtocolEventsForCorrectContract() throws Exception {
         TestFixtures.UploadResult uploaded = completeHappyPathUntilKeyRelease();
         String releaseTs = Instant.now().toString();
@@ -273,6 +285,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Replayed signed requests should be rejected.
     void signedRequestReplayOnProtectedGet_isRejected() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String ts = Instant.now().toString();
@@ -287,6 +300,7 @@ class ContractSecurityIntegrationTest {
     }
 
     @Test
+    // Requests with stale timestamps should be rejected.
     void signedRequestWithStaleTimestamp_isRejected() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String staleTs = Instant.now().minusSeconds(500).toString();
@@ -302,6 +316,7 @@ class ContractSecurityIntegrationTest {
         assertEquals("Bad signature", resp.get("error"));
     }
 
+    // Runs the flow up to successful receipt submission.
     private TestFixtures.UploadResult completeHappyPathUntilKeyRelease() throws Exception {
         TestFixtures.UploadResult uploaded = TestFixtures.uploadContract(controller, sender, recipient, TestFixtures.SAMPLE_CONTRACT, false);
         String receiptTs = Instant.now().toString();
@@ -317,6 +332,7 @@ class ContractSecurityIntegrationTest {
         return uploaded;
     }
 
+    // Makes a small change to a Base64 string for tampering tests.
     private static String mutateBase64(String input) {
         char replacement = input.charAt(input.length() - 1) == 'A' ? 'B' : 'A';
         return input.substring(0, input.length() - 1) + replacement;
