@@ -17,6 +17,7 @@ import java.util.Map;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 
+// Shared setup/reset helpers for integration and performance tests.
 final class TestEnvironmentSupport {
     private static final Path WEB_DATA = Path.of("web-data");
     private static final List<String> FILES = List.of(
@@ -38,6 +39,7 @@ final class TestEnvironmentSupport {
 
     private TestEnvironmentSupport() {}
 
+    // Starts the shared test environment and server if needed.
     static synchronized void beginSuite() throws Exception {
         if (INITIALIZED.compareAndSet(false, true)) {
             backupFiles();
@@ -48,6 +50,7 @@ final class TestEnvironmentSupport {
         resetRuntimeState();
     }
 
+    // Restores original files after all test classes finish.
     static synchronized void endSuite() throws Exception {
         int remaining = ACTIVE_CLASSES.decrementAndGet();
         if (remaining <= 0 && INITIALIZED.get()) {
@@ -56,24 +59,26 @@ final class TestEnvironmentSupport {
         }
     }
 
+    // Resets files and in-memory state before each test.
     static void resetForTest() throws Exception {
         resetPersistentFiles();
         resetRuntimeState();
     }
 
+    // Returns the test gateway secret used by the bridge.
     static String gatewaySecret() {
         return GATEWAY_SECRET;
     }
 
-    static String lawyerCode() {
+    static String lawyerCode() {  // Returns the lawyer registration code used in tests.
         return LAWYER_CODE;
     }
 
-    static BridgeClient bridge() {
+    static BridgeClient bridge() {  // Creates a bridge client pointed at the local test server.
         return new BridgeClient("127.0.0.1", 5050);
     }
 
-    private static void backupFiles() throws IOException {
+    private static void backupFiles() throws IOException { // Saves copies of original web-data files before tests run.
         Files.createDirectories(WEB_DATA);
         BACKUPS.clear();
         for (String name : FILES) {
@@ -82,7 +87,7 @@ final class TestEnvironmentSupport {
         }
     }
 
-    private static void restoreFiles() throws IOException {
+    private static void restoreFiles() throws IOException { // Restores original web-data files after tests finish.
         for (Map.Entry<String, byte[]> entry : BACKUPS.entrySet()) {
             Path path = WEB_DATA.resolve(entry.getKey());
             byte[] content = entry.getValue();
@@ -94,7 +99,7 @@ final class TestEnvironmentSupport {
         }
     }
 
-    private static void resetPersistentFiles() throws IOException {
+    private static void resetPersistentFiles() throws IOException {  // Resets persistent test files to a clean state.
         Files.createDirectories(WEB_DATA);
         writeText("audit-log.json", "[]\n");
         writeText("contracts-store.json", "[]\n");
@@ -105,11 +110,11 @@ final class TestEnvironmentSupport {
         writeText("lawyer-reg-code.txt", LAWYER_CODE + "\n");
     }
 
-    private static void writeText(String fileName, String content) throws IOException {
+    private static void writeText(String fileName, String content) throws IOException {  // Starts the socket server once for the full test suite.
         Files.writeString(WEB_DATA.resolve(fileName), content, StandardCharsets.UTF_8);
     }
 
-    private static void startServerIfNeeded() throws Exception {
+    private static void startServerIfNeeded() throws Exception { // Starts the socket server once for the full test suite. 
         if (SERVER_STARTED.compareAndSet(false, true)) {
             Thread t = new Thread(() -> {
                 try {
@@ -124,7 +129,7 @@ final class TestEnvironmentSupport {
         }
     }
 
-    private static void waitForPort(int port, Duration timeout) throws Exception {
+    private static void waitForPort(int port, Duration timeout) throws Exception { // Waits until the local server port is available.
         long deadline = System.nanoTime() + timeout.toNanos();
         Exception last = null;
         while (System.nanoTime() < deadline) {
@@ -139,7 +144,7 @@ final class TestEnvironmentSupport {
         throw new IllegalStateException("Timed out waiting for server port " + port, last);
     }
 
-    private static void resetRuntimeState() throws Exception {
+    private static void resetRuntimeState() throws Exception { // Waits until the local server port is available.
         clearMapField(ServerMain.class, "USER_PUBKEYS");
         clearMapField(ServerMain.class, "CONTRACTS");
         clearAuditLogStore();
@@ -147,7 +152,7 @@ final class TestEnvironmentSupport {
         AtomicLongHolder.reset(ContractController.class, "REPLAY_COUNTER");
     }
 
-    private static void clearAuditLogStore() throws Exception {
+    private static void clearAuditLogStore() throws Exception { // Clears the in-memory audit log entries.
         Field auditField = ServerMain.class.getDeclaredField("AUDIT");
         auditField.setAccessible(true);
         AuditLogStore audit = (AuditLogStore) auditField.get(null);
@@ -160,7 +165,7 @@ final class TestEnvironmentSupport {
         entries.clear();
     }
 
-    private static void clearMapField(Class<?> owner, String fieldName) throws Exception {
+    private static void clearMapField(Class<?> owner, String fieldName) throws Exception {  // Clears a static map field using reflection.
         Field field = owner.getDeclaredField(fieldName);
         field.setAccessible(true);
         @SuppressWarnings("unchecked")
@@ -176,7 +181,7 @@ final class TestEnvironmentSupport {
         list.clear();
     }
 
-    private static final class AtomicLongHolder {
+    private static final class AtomicLongHolder { // Resets a static AtomicLong field using reflection.
         private static void reset(Class<?> owner, String fieldName) throws Exception {
             Field field = owner.getDeclaredField(fieldName);
             field.setAccessible(true);
